@@ -42,6 +42,8 @@ const (
 	TestStatePathErr                           // unparseable path to files (download only)
 )
 
+const DefaultPrefetchDelay time.Duration = 24 * time.Hour
+
 type SourceTestData struct {
 	n                         int // subtest counter
 	xTransport                *XTransport
@@ -284,7 +286,7 @@ func prepSourceTestCache(t *testing.T, d *SourceTestData, e *SourceTestExpect, s
 	e.cache = []SourceFixture{d.fixtures[state][source], d.fixtures[state][source+".minisig"]}
 	switch state {
 	case TestStateCorrect:
-		e.Source.in, e.success, e.delay = e.cache[0].content, true, e.Source.prefetchDelay
+		e.Source.in, e.success, e.delay = e.cache[0].content, true, e.Source.cacheTTL
 	case TestStateExpired: // no hard expired but need update
 		e.Source.in, e.success, e.delay = e.cache[0].content, true, 0
 	case TestStatePartial, TestStatePartialSig:
@@ -353,7 +355,7 @@ func prepSourceTestDownload(
 	if e.success {
 		e.err = ""
 		if lastStateWin == false { // cache expired wins it
-			e.delay = e.Source.prefetchDelay
+			e.delay = e.Source.cacheTTL
 		}
 	} else {
 		e.delay = MinimumPrefetchInterval
@@ -375,7 +377,7 @@ func setupSourceTestCase(t *testing.T, d *SourceTestData, i int,
 	}
 	e.Source = &Source{
 		name: id, urls: []*url.URL{}, format: SourceFormatV2, minisignKey: d.key,
-		cacheFile: e.cachePath, cacheTTL: DefaultPrefetchDelay * 3, prefetchDelay: DefaultPrefetchDelay,
+		cacheFile: e.cachePath, cacheTTL: DefaultPrefetchDelay * 3,
 	}
 	if cacheTest != nil {
 		prepSourceTestCache(t, d, e, d.sources[i], *cacheTest)
@@ -405,9 +407,9 @@ func TestNewSource(t *testing.T) {
 		refreshDelay time.Duration
 		e            *SourceTestExpect
 	}{
-		{"", "", 0, &SourceTestExpect{err: " ", Source: &Source{name: "short refresh delay", urls: []*url.URL{}, cacheTTL: DefaultPrefetchDelay, prefetchDelay: DefaultPrefetchDelay, prefix: ""}}},
-		{"v1", d.keyStr, DefaultPrefetchDelay * 2, &SourceTestExpect{err: "Unsupported source format", Source: &Source{name: "old format", urls: []*url.URL{}, cacheTTL: DefaultPrefetchDelay * 2, prefetchDelay: DefaultPrefetchDelay}}},
-		{"v2", "", DefaultPrefetchDelay * 3, &SourceTestExpect{err: "Invalid encoded public key", Source: &Source{name: "invalid public key", urls: []*url.URL{}, cacheTTL: DefaultPrefetchDelay * 3, prefetchDelay: DefaultPrefetchDelay}}},
+		{"", "", DefaultPrefetchDelay, &SourceTestExpect{err: " ", Source: &Source{name: "short refresh delay", urls: []*url.URL{}, cacheTTL: DefaultPrefetchDelay, prefix: ""}}},
+		{"v1", d.keyStr, DefaultPrefetchDelay * 2, &SourceTestExpect{err: "Unsupported source format", Source: &Source{name: "old format", urls: []*url.URL{}, cacheTTL: DefaultPrefetchDelay * 2}}},
+		{"v2", "", DefaultPrefetchDelay * 3, &SourceTestExpect{err: "Invalid encoded public key", Source: &Source{name: "invalid public key", urls: []*url.URL{}, cacheTTL: DefaultPrefetchDelay * 3}}},
 	} {
 		t.Run(tt.e.Source.name, func(t *testing.T) {
 			got, err := NewSource(
