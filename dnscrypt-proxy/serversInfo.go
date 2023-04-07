@@ -142,9 +142,9 @@ type ServersInfo struct {
 	inner             []*ServerInfo
 	registeredServers []RegisteredServer
 	registeredRelays  []RegisteredServer
-	gotNewServers     bool
 	lbStrategy        LBStrategy
 	lbEstimator       bool
+	gotNewServers     bool
 }
 
 func NewServersInfo() ServersInfo {
@@ -252,7 +252,7 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 			proxy.xTransport.internalResolverReady = true
 		}
 		if serversInfo.getGotNewServers() {
-			dlog.Noticef("Got new servers, will start new refreshing")
+			dlog.Notice("Got new servers, will start new refreshing")
 			break
 		}
 	}

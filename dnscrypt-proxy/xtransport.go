@@ -62,10 +62,10 @@ type XTransport struct {
 	cachedIPs                CachedIPs
 	altSupport               AltSupport
 	internalResolvers        []string
-	internalResolverReady    bool
 	bootstrapResolvers       []string
 	mainProto                string
 	ignoreSystemDNS          bool
+	internalResolverReady    bool
 	useIPv4                  bool
 	useIPv6                  bool
 	http3                    bool
@@ -225,7 +225,32 @@ func (xTransport *XTransport) rebuildTransport() {
 			tlsClientConfig.ClientSessionCache = tls.NewLRUClientSessionCache(10)
 		}
 		if xTransport.tlsCipherSuite != nil {
+			tlsClientConfig.PreferServerCipherSuites = false
 			tlsClientConfig.CipherSuites = xTransport.tlsCipherSuite
+
+			// Go doesn't allow changing the cipher suite with TLS 1.3
+			// So, check if the requested set of ciphers matches the TLS 1.3 suite.
+			// If it doesn't, downgrade to TLS 1.2
+			compatibleSuitesCount := 0
+			for _, suite := range tls.CipherSuites() {
+				if suite.Insecure {
+					continue
+				}
+				for _, supportedVersion := range suite.SupportedVersions {
+					if supportedVersion != tls.VersionTLS13 {
+						for _, expectedSuiteID := range xTransport.tlsCipherSuite {
+							if expectedSuiteID == suite.ID {
+								compatibleSuitesCount += 1
+								break
+							}
+						}
+					}
+				}
+			}
+			if compatibleSuitesCount != len(tls.CipherSuites()) {
+				dlog.Notice("Explicit cipher suite configured - downgrading to TLS 1.2")
+				tlsClientConfig.MaxVersion = tls.VersionTLS12
+			}
 		}
 	}
 	transport.TLSClientConfig = &tlsClientConfig
@@ -392,13 +417,13 @@ func (xTransport *XTransport) resolveAndUpdateCache(host string) error {
 			}
 		} else {
 			err = errors.New("Service is not usable yet")
-			dlog.Noticef("%s", err)
+			dlog.Notice(err)
 		}
 	} else {
 		foundIP, ttl, err = xTransport.resolveUsingSystem(host)
 		if err != nil {
 			err = errors.New("System DNS is not usable yet")
-			dlog.Noticef("%s", err)
+			dlog.Notice(err)
 		}
 	}
 	if err != nil {
