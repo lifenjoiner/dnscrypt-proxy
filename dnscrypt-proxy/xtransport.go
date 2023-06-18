@@ -74,6 +74,7 @@ type XTransport struct {
 	proxyDialer              *netproxy.Dialer
 	httpProxyFunction        func(*http.Request) (*url.URL, error)
 	tlsClientCreds           DOHClientCreds
+	keyLogWriter             io.Writer
 }
 
 func NewXTransport() *XTransport {
@@ -92,6 +93,7 @@ func NewXTransport() *XTransport {
 		useIPv6:                  false,
 		tlsDisableSessionTickets: false,
 		tlsCipherSuite:           nil,
+		keyLogWriter:             nil,
 	}
 	return &xTransport
 }
@@ -186,6 +188,10 @@ func (xTransport *XTransport) rebuildTransport() {
 	tlsClientConfig := tls.Config{}
 	certPool, certPoolErr := x509.SystemCertPool()
 
+	if xTransport.keyLogWriter != nil {
+		tlsClientConfig.KeyLogWriter = xTransport.keyLogWriter
+	}
+
 	if clientCreds.rootCA != "" {
 		if certPool == nil {
 			dlog.Fatalf("Additional CAs not supported on this platform: %v", certPoolErr)
@@ -272,7 +278,7 @@ func (xTransport *XTransport) rebuildTransport() {
 					ipOnly = "[" + cachedIP.String() + "]"
 				}
 			} else {
-				dlog.Debugf("[%s] IP address was not cached in H3 DialContext", host)
+				dlog.Debugf("[%s] IP address was not cached in H3 context", host)
 			}
 			addrStr = ipOnly + ":" + strconv.Itoa(port)
 			udpAddr, err := net.ResolveUDPAddr("udp", addrStr)
@@ -285,7 +291,8 @@ func (xTransport *XTransport) rebuildTransport() {
 					return nil, err
 				}
 			}
-			return quic.DialEarlyContext(ctx, xTransport.h3UDPConn, udpAddr, host, tlsCfg, cfg)
+			tlsCfg.ServerName = host
+			return quic.DialEarly(ctx, xTransport.h3UDPConn, udpAddr, tlsCfg, cfg)
 		}}
 		xTransport.h3Transport = h3Transport
 	}
