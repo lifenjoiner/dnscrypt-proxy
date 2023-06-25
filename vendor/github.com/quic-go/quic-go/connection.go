@@ -240,7 +240,6 @@ var newConnection = func(
 	clientDestConnID protocol.ConnectionID,
 	destConnID protocol.ConnectionID,
 	srcConnID protocol.ConnectionID,
-	connIDGenerator ConnectionIDGenerator,
 	statelessResetToken protocol.StatelessResetToken,
 	conf *Config,
 	tlsConf *tls.Config,
@@ -284,7 +283,7 @@ var newConnection = func(
 		runner.Retire,
 		runner.ReplaceWithClosed,
 		s.queueControlFrame,
-		connIDGenerator,
+		s.config.ConnectionIDGenerator,
 	)
 	s.preSetup()
 	s.ctx, s.ctxCancel = context.WithCancel(context.WithValue(context.Background(), ConnectionTracingKey, tracingID))
@@ -312,14 +311,9 @@ var newConnection = func(
 		DisableActiveMigration:          true,
 		StatelessResetToken:             &statelessResetToken,
 		OriginalDestinationConnectionID: origDestConnID,
-		// For interoperability with quic-go versions before May 2023, this value must be set to a value
-		// different from protocol.DefaultActiveConnectionIDLimit.
-		// If set to the default value, it will be omitted from the transport parameters, which will make
-		// old quic-go versions interpret it as 0, instead of the default value of 2.
-		// See https://github.com/quic-go/quic-go/pull/3806.
-		ActiveConnectionIDLimit:   protocol.MaxActiveConnectionIDs,
-		InitialSourceConnectionID: srcConnID,
-		RetrySourceConnectionID:   retrySrcConnID,
+		ActiveConnectionIDLimit:         protocol.MaxActiveConnectionIDs,
+		InitialSourceConnectionID:       srcConnID,
+		RetrySourceConnectionID:         retrySrcConnID,
 	}
 	if s.config.EnableDatagrams {
 		params.MaxDatagramFrameSize = protocol.MaxDatagramFrameSize
@@ -328,6 +322,10 @@ var newConnection = func(
 	}
 	if s.tracer != nil {
 		s.tracer.SentTransportParameters(params)
+	}
+	var allow0RTT func() bool
+	if conf.Allow0RTT != nil {
+		allow0RTT = func() bool { return conf.Allow0RTT(conn.RemoteAddr()) }
 	}
 	cs := handshake.NewCryptoSetupServer(
 		initialStream,
@@ -346,7 +344,7 @@ var newConnection = func(
 			},
 		},
 		tlsConf,
-		conf.Allow0RTT,
+		allow0RTT,
 		s.rttStats,
 		tracer,
 		logger,
@@ -365,7 +363,6 @@ var newClientConnection = func(
 	runner connRunner,
 	destConnID protocol.ConnectionID,
 	srcConnID protocol.ConnectionID,
-	connIDGenerator ConnectionIDGenerator,
 	conf *Config,
 	tlsConf *tls.Config,
 	initialPacketNumber protocol.PacketNumber,
@@ -405,7 +402,7 @@ var newClientConnection = func(
 		runner.Retire,
 		runner.ReplaceWithClosed,
 		s.queueControlFrame,
-		connIDGenerator,
+		s.config.ConnectionIDGenerator,
 	)
 	s.preSetup()
 	s.ctx, s.ctxCancel = context.WithCancel(context.WithValue(context.Background(), ConnectionTracingKey, tracingID))
@@ -431,13 +428,8 @@ var newClientConnection = func(
 		MaxAckDelay:                    protocol.MaxAckDelayInclGranularity,
 		AckDelayExponent:               protocol.AckDelayExponent,
 		DisableActiveMigration:         true,
-		// For interoperability with quic-go versions before May 2023, this value must be set to a value
-		// different from protocol.DefaultActiveConnectionIDLimit.
-		// If set to the default value, it will be omitted from the transport parameters, which will make
-		// old quic-go versions interpret it as 0, instead of the default value of 2.
-		// See https://github.com/quic-go/quic-go/pull/3806.
-		ActiveConnectionIDLimit:   protocol.MaxActiveConnectionIDs,
-		InitialSourceConnectionID: srcConnID,
+		ActiveConnectionIDLimit:        protocol.MaxActiveConnectionIDs,
+		InitialSourceConnectionID:      srcConnID,
 	}
 	if s.config.EnableDatagrams {
 		params.MaxDatagramFrameSize = protocol.MaxDatagramFrameSize

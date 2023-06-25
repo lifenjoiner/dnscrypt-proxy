@@ -2,7 +2,6 @@ package quic
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"time"
 
@@ -30,19 +29,13 @@ func validateConfig(config *Config) error {
 	if config.MaxIncomingUniStreams > 1<<60 {
 		return errors.New("invalid value for Config.MaxIncomingUniStreams")
 	}
-	// check that all QUIC versions are actually supported
-	for _, v := range config.Versions {
-		if !protocol.IsValidVersion(v) {
-			return fmt.Errorf("invalid QUIC version: %s", v)
-		}
-	}
 	return nil
 }
 
 // populateServerConfig populates fields in the quic.Config with their default values, if none are set
 // it may be called with nil
 func populateServerConfig(config *Config) *Config {
-	config = populateConfig(config)
+	config = populateConfig(config, protocol.DefaultConnectionIDLength)
 	if config.MaxTokenAge == 0 {
 		config.MaxTokenAge = protocol.TokenValidity
 	}
@@ -55,15 +48,29 @@ func populateServerConfig(config *Config) *Config {
 	return config
 }
 
-// populateConfig populates fields in the quic.Config with their default values, if none are set
+// populateClientConfig populates fields in the quic.Config with their default values, if none are set
 // it may be called with nil
-func populateConfig(config *Config) *Config {
+func populateClientConfig(config *Config, createdPacketConn bool) *Config {
+	defaultConnIDLen := protocol.DefaultConnectionIDLength
+	if createdPacketConn {
+		defaultConnIDLen = 0
+	}
+
+	config = populateConfig(config, defaultConnIDLen)
+	return config
+}
+
+func populateConfig(config *Config, defaultConnIDLen int) *Config {
 	if config == nil {
 		config = &Config{}
 	}
 	versions := config.Versions
 	if len(versions) == 0 {
 		versions = protocol.SupportedVersions
+	}
+	conIDLen := config.ConnectionIDLength
+	if config.ConnectionIDLength == 0 {
+		conIDLen = defaultConnIDLen
 	}
 	handshakeIdleTimeout := protocol.DefaultHandshakeIdleTimeout
 	if config.HandshakeIdleTimeout != 0 {
@@ -101,9 +108,12 @@ func populateConfig(config *Config) *Config {
 	} else if maxIncomingUniStreams < 0 {
 		maxIncomingUniStreams = 0
 	}
+	connIDGenerator := config.ConnectionIDGenerator
+	if connIDGenerator == nil {
+		connIDGenerator = &protocol.DefaultConnectionIDGenerator{ConnLen: conIDLen}
+	}
 
 	return &Config{
-		GetConfigForClient:               config.GetConfigForClient,
 		Versions:                         versions,
 		HandshakeIdleTimeout:             handshakeIdleTimeout,
 		MaxIdleTimeout:                   idleTimeout,
@@ -118,6 +128,9 @@ func populateConfig(config *Config) *Config {
 		AllowConnectionWindowIncrease:    config.AllowConnectionWindowIncrease,
 		MaxIncomingStreams:               maxIncomingStreams,
 		MaxIncomingUniStreams:            maxIncomingUniStreams,
+		ConnectionIDLength:               conIDLen,
+		ConnectionIDGenerator:            connIDGenerator,
+		StatelessResetKey:                config.StatelessResetKey,
 		TokenStore:                       config.TokenStore,
 		EnableDatagrams:                  config.EnableDatagrams,
 		DisablePathMTUDiscovery:          config.DisablePathMTUDiscovery,

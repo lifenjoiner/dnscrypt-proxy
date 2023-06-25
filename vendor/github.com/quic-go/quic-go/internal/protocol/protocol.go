@@ -77,9 +77,6 @@ const MinConnectionIDLenInitial = 8
 // DefaultAckDelayExponent is the default ack delay exponent
 const DefaultAckDelayExponent = 3
 
-// DefaultActiveConnectionIDLimit is the default active connection ID limit
-const DefaultActiveConnectionIDLimit = 2
-
 // MaxAckDelayExponent is the maximum ack delay exponent
 const MaxAckDelayExponent = 20
 

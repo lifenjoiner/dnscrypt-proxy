@@ -5,6 +5,7 @@ package quic
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 	"syscall"
 	"time"
@@ -31,22 +32,21 @@ type batchConn interface {
 	ReadBatch(ms []ipv4.Message, flags int) (int, error)
 }
 
-func inspectReadBuffer(c syscall.RawConn) (int, error) {
-	var size int
-	var serr error
-	if err := c.Control(func(fd uintptr) {
-		size, serr = unix.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUF)
-	}); err != nil {
-		return 0, err
+func inspectReadBuffer(c interface{}) (int, error) {
+	conn, ok := c.(interface {
+		SyscallConn() (syscall.RawConn, error)
+	})
+	if !ok {
+		return 0, errors.New("doesn't have a SyscallConn")
 	}
-	return size, serr
-}
-
-func inspectWriteBuffer(c syscall.RawConn) (int, error) {
+	rawConn, err := conn.SyscallConn()
+	if err != nil {
+		return 0, fmt.Errorf("couldn't get syscall.RawConn: %w", err)
+	}
 	var size int
 	var serr error
-	if err := c.Control(func(fd uintptr) {
-		size, serr = unix.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF)
+	if err := rawConn.Control(func(fd uintptr) {
+		size, serr = unix.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUF)
 	}); err != nil {
 		return 0, err
 	}
