@@ -20,6 +20,7 @@ import (
 type roundTripCloser interface {
 	RoundTripOpt(*http.Request, RoundTripOpt) (*http.Response, error)
 	HandshakeComplete() bool
+	IsClosed() bool
 	io.Closer
 }
 
@@ -177,6 +178,14 @@ func (r *RoundTripper) getClient(hostname string, onlyCached bool) (rtc *roundTr
 		if onlyCached {
 			return nil, false, ErrNoCachedConn
 		}
+	} else if client.IsClosed() {
+		client = nil
+		delete(r.clients, hostname)
+	} else if client.HandshakeComplete() {
+		isReused = true
+	}
+
+	if client == nil {
 		var err error
 		newCl := newClient
 		if r.newClient != nil {
@@ -211,8 +220,6 @@ func (r *RoundTripper) getClient(hostname string, onlyCached bool) (rtc *roundTr
 		}
 		client = &roundTripCloserWithCount{roundTripCloser: c}
 		r.clients[hostname] = client
-	} else if client.HandshakeComplete() {
-		isReused = true
 	}
 	client.useCount.Add(1)
 	return client, isReused, nil
