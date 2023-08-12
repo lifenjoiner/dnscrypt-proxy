@@ -624,14 +624,26 @@ func (proxy *Proxy) processIncomingQuery(
 		return response
 	}
 	pluginsState := NewPluginsState(proxy, clientProto, clientAddr, serverProto, start)
+	query, _ = pluginsState.ApplyQueryPlugins(&proxy.pluginsGlobals, query)
+	var serverInfo *ServerInfo
+	if len(pluginsState.serverName) > 2 && pluginsState.serverName[:2] == "$." {
+		pluginsState.serverName = pluginsState.serverName[2:]
+		serverInfo = proxy.serversInfo.getByName(pluginsState.serverName)
+		if serverInfo == nil {
+			dlog.Noticef("[%v] server forwarding to does not exist", pluginsState.serverName)
+		}
+	} else {
+		serverInfo = proxy.serversInfo.getOne()
+	}
 	serverName := "-"
 	needsEDNS0Padding := false
-	serverInfo := proxy.serversInfo.getOne()
 	if serverInfo != nil {
 		serverName = serverInfo.Name
 		needsEDNS0Padding = (serverInfo.Proto == stamps.StampProtoTypeDoH || serverInfo.Proto == stamps.StampProtoTypeTLS)
 	}
-	query, _ = pluginsState.ApplyQueryPlugins(&proxy.pluginsGlobals, query, needsEDNS0Padding)
+	if needsEDNS0Padding {
+		query, _ = pluginsState.addQueryEDNS0Padding(&proxy.pluginsGlobals, query)
+	}
 	if len(query) < MinDNSPacketSize || len(query) > MaxDNSPacketSize {
 		return response
 	}
