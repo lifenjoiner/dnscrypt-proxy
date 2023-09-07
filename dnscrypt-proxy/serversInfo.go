@@ -339,6 +339,22 @@ func (serversInfo *ServersInfo) getOne() *ServerInfo {
 	return serverInfo
 }
 
+func (serversInfo *ServersInfo) getByName(name string) *ServerInfo {
+	serversInfo.Lock()
+	var serverInfo *ServerInfo
+	for _, serverInfo = range serversInfo.inner {
+		if serverInfo.Name == name {
+			break
+		}
+	}
+	if serverInfo != nil {
+		dlog.Debugf("Using server [%s] RTT: %d", serverInfo.Name, int(serverInfo.rtt.Value()))
+	}
+	serversInfo.Unlock()
+
+	return serverInfo
+}
+
 func fetchServerInfo(proxy *Proxy, name string, stamp stamps.ServerStamp, isNew bool) (ServerInfo, error) {
 	if stamp.Proto == stamps.StampProtoTypeDNSCrypt {
 		return fetchDNSCryptServerInfo(proxy, name, stamp, isNew)

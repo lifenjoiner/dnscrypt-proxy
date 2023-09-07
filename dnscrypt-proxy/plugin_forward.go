@@ -118,7 +118,10 @@ func (plugin *PluginForward) Eval(pluginsState *PluginsState, msg *dns.Msg) erro
 		return nil
 	}
 	server := servers[rand.Intn(len(servers))]
-	if server == "$DHCPDNS" {
+	if server[:2] == "$." {
+		pluginsState.serverName = server
+		return nil
+	} else if server == "$DHCPDNS" {
 		for _, dhcpdns := range plugin.dhcpdns {
 			n, ip, DNS, err := dhcpdns.Status()
 			maxFail := 9

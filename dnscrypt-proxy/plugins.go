@@ -273,7 +273,6 @@ func NewPluginsState(
 func (pluginsState *PluginsState) ApplyQueryPlugins(
 	pluginsGlobals *PluginsGlobals,
 	packet []byte,
-	needsEDNS0Padding bool,
 ) ([]byte, error) {
 	msg := dns.Msg{}
 	if err := msg.Unpack(packet); err != nil {
@@ -327,13 +326,24 @@ func (pluginsState *PluginsState) ApplyQueryPlugins(
 	if err != nil {
 		return packet, err
 	}
-	if needsEDNS0Padding && pluginsState.action == PluginsActionContinue {
-		padLen := 63 - ((len(packet2) + 63) & 63)
-		if paddedPacket2, _ := addEDNS0PaddingIfNoneFound(&msg, packet2, padLen); paddedPacket2 != nil {
-			return paddedPacket2, nil
+	return packet2, nil
+}
+
+func (pluginsState *PluginsState) addQueryEDNS0Padding(
+	pluginsGlobals *PluginsGlobals,
+	packet []byte,
+) ([]byte, error) {
+	msg := dns.Msg{}
+	if err := msg.Unpack(packet); err != nil {
+		return packet, err
+	}
+	if pluginsState.action == PluginsActionContinue {
+		padLen := 63 - ((len(packet) + 63) & 63)
+		if packet2, _ := addEDNS0PaddingIfNoneFound(&msg, packet, padLen); packet2 != nil {
+			return packet2, nil
 		}
 	}
-	return packet2, nil
+	return packet, nil
 }
 
 func (pluginsState *PluginsState) ApplyResponsePlugins(

@@ -4,10 +4,11 @@
 
 ## This is used to route specific domain names to specific servers.
 ## The general format is:
-## <domain> <server address>[:port] | $DHCPDNS [, <server address>[:port] | $DHCPDNS ...]
+## <domain> <server address>[:port] | $DHCPDNS | $.name [, <server address>[:port] | $DHCPDNS | $.name ...]
 ## $DHCPDNS is case sensitive, represents a DNS detected from the upstream
 ## router combining port 53, prefers IPv6 if `ipv6_servers`, and falls back to
 ## random one of `bootstrap_resolvers` if auto detection fails.
+## $.name specifies a server by name which is in the source files or static entries.
 ## IPv6 addresses can be specified by enclosing the address in square brackets.
 
 ## In order to enable this feature, the "forwarding_rules" property needs to
