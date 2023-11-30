@@ -245,17 +245,27 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 	}
 	serversInfo.RUnlock()
 	liveServers := 0
+	countChannel := make(chan struct{}, proxy.certRefreshConcurrency)
+	waitChannel := make(chan struct{})
 	var err error
-	for _, registeredServer := range registeredServers {
-		if err = serversInfo.refreshServer(proxy, registeredServer.name, registeredServer.stamp); err == nil {
-			liveServers++
-			proxy.xTransport.internalResolverReady = true
-		}
+	for i := range registeredServers {
+		countChannel <- struct{}{}
+		go func(registeredServer *RegisteredServer) {
+			if err = serversInfo.refreshServer(proxy, registeredServer.name, registeredServer.stamp); err == nil {
+				liveServers++
+				proxy.xTransport.internalResolverReady = true
+			}
+			<-countChannel
+			if len(countChannel) == 0 {
+				close(waitChannel)
+			}
+		}(&registeredServers[i])
 		if serversInfo.getGotNewServers() {
 			dlog.Notice("Got new servers, will start new refreshing")
 			break
 		}
 	}
+	<-waitChannel
 	serversInfo.Lock()
 	sort.SliceStable(serversInfo.inner, func(i, j int) bool {
 		return serversInfo.inner[i].initialRtt < serversInfo.inner[j].initialRtt
