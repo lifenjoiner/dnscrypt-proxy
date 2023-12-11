@@ -259,7 +259,7 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 			}
 		}(&registeredServers[i])
 		if serversInfo.getGotNewServers() {
-			dlog.Notice("Got new servers, will start new refreshing")
+			dlog.Notice("Got new servers, will skip remaining and start new refreshing")
 			break
 		}
 	}
