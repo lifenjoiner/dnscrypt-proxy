@@ -244,7 +244,6 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 		serversInfo.gotNewServers = false
 	}
 	serversInfo.RUnlock()
-	liveServers := 0
 	countChannel := make(chan struct{}, proxy.certRefreshConcurrency)
 	waitChannel := make(chan struct{})
 	var err error
@@ -252,7 +251,6 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 		countChannel <- struct{}{}
 		go func(registeredServer *RegisteredServer) {
 			if err = serversInfo.refreshServer(proxy, registeredServer.name, registeredServer.stamp); err == nil {
-				liveServers++
 				proxy.xTransport.internalResolverReady = true
 			}
 			<-countChannel
@@ -282,7 +280,7 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 		dlog.Noticef("Server with the lowest initial latency: %s (rtt: %dms)", inner[0].Name, inner[0].initialRtt)
 	}
 	serversInfo.Unlock()
-	return liveServers, err
+	return innerLen, err
 }
 
 func (serversInfo *ServersInfo) estimatorUpdate(currentActive int) {
