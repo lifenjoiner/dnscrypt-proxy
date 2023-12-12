@@ -263,7 +263,9 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 			break
 		}
 	}
-	<-waitChannel
+	if len(registeredServers) > 0 {
+		<-waitChannel
+	}
 	serversInfo.Lock()
 	sort.SliceStable(serversInfo.inner, func(i, j int) bool {
 		return serversInfo.inner[i].initialRtt < serversInfo.inner[j].initialRtt
