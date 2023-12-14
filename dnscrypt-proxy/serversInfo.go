@@ -319,7 +319,7 @@ func (serversInfo *ServersInfo) getOne() *ServerInfo {
 }
 
 func (serversInfo *ServersInfo) getByName(name string) *ServerInfo {
-	serversInfo.Lock()
+	serversInfo.RLock()
 	var serverInfo *ServerInfo
 	for _, serverInfo = range serversInfo.inner {
 		if serverInfo.Name == name {
@@ -329,7 +329,7 @@ func (serversInfo *ServersInfo) getByName(name string) *ServerInfo {
 	if serverInfo != nil {
 		dlog.Debugf("Using server [%s] RTT: %d", serverInfo.Name, int(serverInfo.rtt.Value()))
 	}
-	serversInfo.Unlock()
+	serversInfo.RUnlock()
 
 	return serverInfo
 }
