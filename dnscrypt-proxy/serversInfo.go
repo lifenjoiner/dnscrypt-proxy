@@ -238,33 +238,34 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 	dlog.Debug("Refreshing certificates")
 	serversInfo.RLock()
 	// Appending registeredServers slice from sources may allocate new memory.
-	registeredServers := make([]RegisteredServer, len(serversInfo.registeredServers))
+	serversCount := len(serversInfo.registeredServers)
+	registeredServers := make([]RegisteredServer, serversCount)
 	copy(registeredServers, serversInfo.registeredServers)
 	if serversInfo.gotNewServers {
 		serversInfo.gotNewServers = false
 	}
 	serversInfo.RUnlock()
 	countChannel := make(chan struct{}, proxy.certRefreshConcurrency)
-	waitChannel := make(chan struct{})
-	var err error
+	errorChannel := make(chan error, serversCount)
 	for i := range registeredServers {
 		countChannel <- struct{}{}
 		go func(registeredServer *RegisteredServer) {
-			if err = serversInfo.refreshServer(proxy, registeredServer.name, registeredServer.stamp); err == nil {
+			err := serversInfo.refreshServer(proxy, registeredServer.name, registeredServer.stamp)
+			if err == nil {
 				proxy.xTransport.internalResolverReady = true
 			}
+			errorChannel <- err
 			<-countChannel
-			if len(countChannel) == 0 {
-				close(waitChannel)
-			}
 		}(&registeredServers[i])
 		if serversInfo.getGotNewServers() {
 			dlog.Notice("Got new servers, will skip remaining and start new refreshing")
+			serversCount = i + 1
 			break
 		}
 	}
-	if len(registeredServers) > 0 {
-		<-waitChannel
+	var err error
+	for i := 0; i < serversCount; i++ {
+		err = <-errorChannel
 	}
 	serversInfo.Lock()
 	sort.SliceStable(serversInfo.inner, func(i, j int) bool {
@@ -280,6 +281,7 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 	}
 	if innerLen > 0 {
 		dlog.Noticef("Server with the lowest initial latency: %s (rtt: %dms)", inner[0].Name, inner[0].initialRtt)
+		err = nil
 	}
 	serversInfo.Unlock()
 	return innerLen, err
