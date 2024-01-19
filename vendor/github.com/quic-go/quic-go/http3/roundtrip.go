@@ -211,6 +211,7 @@ func (r *RoundTripper) getClient(hostname string, onlyCached bool) (rtc *roundTr
 				MaxHeaderBytes:     r.MaxResponseHeaderBytes,
 				StreamHijacker:     r.StreamHijacker,
 				UniStreamHijacker:  r.UniStreamHijacker,
+				AdditionalSettings: r.AdditionalSettings,
 			},
 			r.QuicConfig,
 			dial,
