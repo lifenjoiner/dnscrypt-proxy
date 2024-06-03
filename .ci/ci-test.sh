@@ -68,11 +68,11 @@ t || dig -p${DNS_PORT} A download.windowsupdate.com @127.0.0.1 | grep -Fq "NOERR
 t || dig -p${DNS_PORT} A dl.google.com @127.0.0.1 | grep -Fq "NOERROR" || fail
 
 section
-t || dig -p${DNS_PORT} +short cloaked.com @127.0.0.1 | grep -Eq '1.1.1.1|1.0.0.1' || fail
-t || dig -p${DNS_PORT} +short MX cloaked.com @127.0.0.1 | grep -Fq 'locally blocked' || fail
+t || dig -p${DNS_PORT} +short cloakedunregistered.com @127.0.0.1 | grep -Eq '1.1.1.1|1.0.0.1' || fail
+t || dig -p${DNS_PORT} +short MX cloakedunregistered.com @127.0.0.1 | grep -Fq 'locally blocked' || fail
 t || dig -p${DNS_PORT} +short MX example.com @127.0.0.1 | grep -Fvq 'locally blocked' || fail
-t || dig -p${DNS_PORT} NS cloaked.com @127.0.0.1 | grep -Fiq 'gtld-servers.net' || fail
-t || dig -p${DNS_PORT} +short www.cloaked2.com @127.0.0.1 | grep -Eq '1.1.1.1|1.0.0.1' || fail
+t || dig -p${DNS_PORT} NS cloakedunregistered.com @127.0.0.1 | grep -Fiq 'gtld-servers.net' || fail
+t || dig -p${DNS_PORT} +short www.cloakedunregistered2.com @127.0.0.1 | grep -Eq '1.1.1.1|1.0.0.1' || fail
 t || dig -p${DNS_PORT} +short www.dnscrypt-test @127.0.0.1 | grep -Fq '192.168.100.100' || fail
 t || dig -p${DNS_PORT} a.www.dnscrypt-test @127.0.0.1 | grep -Fq 'NXDOMAIN' || fail
 t || dig -p${DNS_PORT} +short ptr 101.100.168.192.in-addr.arpa. @127.0.0.1 | grep -Eq 'www.dnscrypt-test.com' || fail
@@ -126,8 +126,8 @@ t || grep -Eq 'darpa.mil.*FORWARD' query.log || fail
 t || grep -Eq 'www.darpa.mil.*FORWARD' query.log || fail
 t || grep -Eq 'download.windowsupdate.com.*FORWARD' query.log || fail
 t || grep -Eq 'dl.google.com.*PASS' query.log || fail
-t || grep -Eq 'cloaked.com.*CLOAK' query.log || fail
-t || grep -Eq 'www.cloaked2.com.*CLOAK' query.log || fail
+t || grep -Eq 'cloakedunregistered.com.*CLOAK' query.log || fail
+t || grep -Eq 'www.cloakedunregistered2.com.*CLOAK' query.log || fail
 t || grep -Eq 'www.dnscrypt-test.*CLOAK' query.log || fail
 t || grep -Eq 'a.www.dnscrypt-test.*NXDOMAIN' query.log || fail
 t || grep -Eq 'telemetry.example.*REJECT' query.log || fail
