@@ -18,13 +18,13 @@ require (
 	github.com/k-sone/critbitgo v1.4.0
 	github.com/kardianos/service v1.2.2
 	github.com/lifenjoiner/dhcpdns v0.0.6
-	github.com/miekg/dns v1.1.61
+	github.com/miekg/dns v1.1.62
 	github.com/opencoff/go-sieve v0.2.1
 	github.com/powerman/check v1.7.0
 	github.com/quic-go/quic-go v0.46.0
 	golang.org/x/crypto v0.26.0
 	golang.org/x/net v0.28.0
-	golang.org/x/sys v0.23.0
+	golang.org/x/sys v0.24.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
