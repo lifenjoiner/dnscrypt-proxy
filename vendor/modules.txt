@@ -41,7 +41,7 @@ github.com/hashicorp/golang-lru/simplelru
 ## explicit; go 1.12
 github.com/hectane/go-acl
 github.com/hectane/go-acl/api
-# github.com/jedisct1/dlog v0.0.0-20241011102921-a236bd13c4c1
+# github.com/jedisct1/dlog v0.0.0-20241212093805-3c5fd791b405
 ## explicit; go 1.23
 github.com/jedisct1/dlog
 # github.com/jedisct1/go-clocksmith v0.0.0-20230211133011-392c1afea73e
@@ -50,14 +50,14 @@ github.com/jedisct1/go-clocksmith
 # github.com/jedisct1/go-dnsstamps v0.0.0-20240423203910-07a0735c7774
 ## explicit; go 1.18
 github.com/jedisct1/go-dnsstamps
-# github.com/jedisct1/go-hpke-compact v0.0.0-20230811132953-4ee502b61f80
-## explicit; go 1.20
+# github.com/jedisct1/go-hpke-compact v0.0.0-20241212093903-5caa4621366f
+## explicit; go 1.23.4
 github.com/jedisct1/go-hpke-compact
-# github.com/jedisct1/go-minisign v0.0.0-20230811132847-661be99b8267
-## explicit; go 1.20
+# github.com/jedisct1/go-minisign v0.0.0-20241212093149-d2f9f49435c7
+## explicit; go 1.23.4
 github.com/jedisct1/go-minisign
-# github.com/jedisct1/xsecretbox v0.0.0-20230811132812-b950633f9f1f
-## explicit; go 1.20
+# github.com/jedisct1/xsecretbox v0.0.0-20241212092125-3afc4917ac41
+## explicit; go 1.23.4
 github.com/jedisct1/xsecretbox
 # github.com/k-sone/critbitgo v1.4.0
 ## explicit
@@ -98,8 +98,8 @@ github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 ## explicit
 github.com/pmezard/go-difflib/difflib
-# github.com/powerman/check v1.7.0
-## explicit; go 1.19
+# github.com/powerman/check v1.8.0
+## explicit; go 1.20
 github.com/powerman/check
 # github.com/powerman/deepequal v0.1.0
 ## explicit; go 1.16
@@ -124,15 +124,15 @@ github.com/quic-go/quic-go/internal/utils/ringbuffer
 github.com/quic-go/quic-go/internal/wire
 github.com/quic-go/quic-go/logging
 github.com/quic-go/quic-go/quicvarint
-# github.com/smartystreets/goconvey v1.7.2
-## explicit; go 1.16
+# github.com/smartystreets/goconvey v1.8.1
+## explicit; go 1.18
 github.com/smartystreets/goconvey/convey/gotest
 github.com/smartystreets/goconvey/convey/reporting
 # go.uber.org/mock v0.4.0
 ## explicit; go 1.20
 go.uber.org/mock/mockgen
 go.uber.org/mock/mockgen/model
-# golang.org/x/crypto v0.30.0
+# golang.org/x/crypto v0.31.0
 ## explicit; go 1.20
 golang.org/x/crypto/blake2b
 golang.org/x/crypto/chacha20
@@ -210,22 +210,32 @@ golang.org/x/tools/internal/stdlib
 golang.org/x/tools/internal/tokeninternal
 golang.org/x/tools/internal/typesinternal
 golang.org/x/tools/internal/versions
-# google.golang.org/genproto v0.0.0-20230110181048-76db0878b65f
+# google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
 ## explicit; go 1.19
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.53.0
+# google.golang.org/grpc v1.56.3
 ## explicit; go 1.17
+google.golang.org/grpc/attributes
 google.golang.org/grpc/codes
+google.golang.org/grpc/connectivity
+google.golang.org/grpc/credentials
+google.golang.org/grpc/grpclog
+google.golang.org/grpc/internal
+google.golang.org/grpc/internal/credentials
+google.golang.org/grpc/internal/grpclog
 google.golang.org/grpc/internal/status
+google.golang.org/grpc/resolver
+google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/status
-# google.golang.org/protobuf v1.33.0
-## explicit; go 1.17
+# google.golang.org/protobuf v1.34.2
+## explicit; go 1.20
 google.golang.org/protobuf/encoding/prototext
 google.golang.org/protobuf/encoding/protowire
 google.golang.org/protobuf/internal/descfmt
 google.golang.org/protobuf/internal/descopts
 google.golang.org/protobuf/internal/detrand
 google.golang.org/protobuf/internal/editiondefaults
+google.golang.org/protobuf/internal/editionssupport
 google.golang.org/protobuf/internal/encoding/defval
 google.golang.org/protobuf/internal/encoding/messageset
 google.golang.org/protobuf/internal/encoding/tag
