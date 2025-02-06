@@ -11,15 +11,28 @@ import (
 	"github.com/miekg/dns"
 )
 
-type PluginForwardEntry struct {
-	domain  string
+type SearchSequenceItemType int
+
+const (
+	Explicit SearchSequenceItemType = iota
+	Bootstrap
+	DHCP
+)
+
+type SearchSequenceItem struct {
+	typ     SearchSequenceItemType
 	servers []string
 }
 
+type PluginForwardEntry struct {
+	domain   string
+	sequence []SearchSequenceItem
+}
+
 type PluginForward struct {
-	forwardMap      []PluginForwardEntry
-	dhcpdns         []*dhcpdns.Detector
-	dhcpdnsFallback []string
+	forwardMap         []PluginForwardEntry
+	bootstrapResolvers []string
+	dhcpdns            []*dhcpdns.Detector
 }
 
 func (plugin *PluginForward) Name() string {
@@ -32,17 +45,27 @@ func (plugin *PluginForward) Description() string {
 
 func (plugin *PluginForward) Init(proxy *Proxy) error {
 	dlog.Noticef("Loading the set of forwarding rules from [%s]", proxy.forwardFile)
+
+	if proxy.xTransport != nil {
+		plugin.bootstrapResolvers = proxy.xTransport.bootstrapResolvers
+	}
+
 	lines, err := ReadTextFile(proxy.forwardFile)
 	if err != nil {
 		return err
 	}
-	hasVar := false
 	for lineNo, line := range strings.Split(lines, "\n") {
 		line = TrimAndStripInlineComments(line)
 		if len(line) == 0 {
 			continue
 		}
 		domain, serversStr, ok := StringTwoFields(line)
+		if strings.HasPrefix(domain, "*.") {
+			domain = domain[2:]
+		}
+		if strings.Index(domain, "*") != -1 {
+			ok = false
+		}
 		if !ok {
 			return fmt.Errorf(
 				"Syntax error for a forwarding rule at line %d. Expected syntax: example.com 9.9.9.9,8.8.8.8",
@@ -50,43 +73,89 @@ func (plugin *PluginForward) Init(proxy *Proxy) error {
 			)
 		}
 		domain = strings.ToLower(domain)
-		var servers []string
+		requiresDHCP := false
+		var sequence []SearchSequenceItem
 		for _, server := range strings.Split(serversStr, ",") {
 			server = strings.TrimSpace(server)
-			server = strings.TrimPrefix(server, "[")
-			server = strings.TrimSuffix(server, "]")
-			if server == "$DHCPDNS" {
-				hasVar = true
-			} else if ip := net.ParseIP(server); ip != nil {
-				if ip.To4() != nil {
-					server = fmt.Sprintf("%s:%d", server, 53)
-				} else {
-					server = fmt.Sprintf("[%s]:%d", server, 53)
+			switch server {
+			case "$BOOTSTRAP":
+				if len(plugin.bootstrapResolvers) == 0 {
+					return fmt.Errorf(
+						"Syntax error for a forwarding rule at line %d. No bootstrap resolvers available",
+						1+lineNo,
+					)
 				}
+				if len(sequence) > 0 && sequence[len(sequence)-1].typ == Bootstrap {
+					// Ignore repetitions
+				} else {
+					sequence = append(sequence, SearchSequenceItem{typ: Bootstrap})
+					dlog.Infof("Forwarding [%s] to the bootstrap servers", domain)
+				}
+			case "$DHCP":
+				if len(sequence) > 0 && sequence[len(sequence)-1].typ == DHCP {
+					// Ignore repetitions
+				} else {
+					sequence = append(sequence, SearchSequenceItem{typ: DHCP})
+					dlog.Infof("Forwarding [%s] to the DHCP servers", domain)
+				}
+				requiresDHCP = true
+			default:
+				if strings.HasPrefix(server, "$") && !strings.HasPrefix(server, "$.") {
+					dlog.Criticalf("Unknown keyword [%s] at line %d", server, 1+lineNo)
+					continue
+				}
+				server = strings.TrimPrefix(server, "[")
+				server = strings.TrimSuffix(server, "]")
+				if ip := net.ParseIP(server); ip != nil {
+					if ip.To4() != nil {
+						server = fmt.Sprintf("%s:%d", server, 53)
+					} else {
+						server = fmt.Sprintf("[%s]:%d", server, 53)
+					}
+				}
+				idxServers := -1
+				for i, item := range sequence {
+					if item.typ == Explicit {
+						idxServers = i
+					}
+				}
+				if idxServers == -1 {
+					sequence = append(sequence, SearchSequenceItem{typ: Explicit, servers: []string{server}})
+				} else {
+					sequence[idxServers].servers = append(sequence[idxServers].servers, server)
+				}
+				dlog.Infof("Forwarding [%s] to [%s]", domain, server)
 			}
-			dlog.Infof("Forwarding [%s] to %s", domain, server)
-			servers = append(servers, server)
 		}
-		if len(servers) == 0 {
-			continue
+		if requiresDHCP {
+			if len(proxy.userName) > 0 {
+				dlog.Warn("DHCP/DNS detection may not work when 'user_name' is set or when starting as a non-root user")
+			}
+			if proxy.SourceIPv6 {
+				dlog.Notice("Starting a DHCP/DNS detector for IPv6")
+				d6 := &dhcpdns.Detector{RemoteIPPort: "[2001:DB8::53]:80"}
+				if err := d6.Detect(); err != nil {
+					dlog.Criticalf("Failed to start the DHCP/DNS IPv6 server: %s", err)
+					continue
+				}
+				go d6.Serve(9, 10)
+				plugin.dhcpdns = append(plugin.dhcpdns, d6)
+			}
+			if proxy.SourceIPv4 {
+				dlog.Notice("Starting a DHCP/DNS detector for IPv4")
+				d4 := &dhcpdns.Detector{RemoteIPPort: "192.0.2.53:80"}
+				if err := d4.Detect(); err != nil {
+					dlog.Criticalf("Failed to start the DHCP/DNS IPv4 server: %s", err)
+					continue
+				}
+				go d4.Serve(9, 10)
+				plugin.dhcpdns = append(plugin.dhcpdns, d4)
+			}
 		}
 		plugin.forwardMap = append(plugin.forwardMap, PluginForwardEntry{
-			domain:  domain,
-			servers: servers,
+			domain:   domain,
+			sequence: sequence,
 		})
-	}
-	if hasVar {
-		if proxy.SourceIPv6 {
-			d6 := &dhcpdns.Detector{RemoteIPPort: "[2001:4860:4860::8888]:80"}
-			go d6.Serve(9, 10)
-			plugin.dhcpdns = append(plugin.dhcpdns, d6)
-		}
-		if proxy.SourceIPv4 {
-			d4 := &dhcpdns.Detector{RemoteIPPort: "8.8.8.8:80"}
-			go d4.Serve(9, 10)
-			plugin.dhcpdns = append(plugin.dhcpdns, d4)
-		}
-		plugin.dhcpdnsFallback = proxy.xTransport.bootstrapResolvers
 	}
 	return nil
 }
@@ -102,7 +171,7 @@ func (plugin *PluginForward) Reload() error {
 func (plugin *PluginForward) Eval(pluginsState *PluginsState, msg *dns.Msg) error {
 	qName := pluginsState.qName
 	qNameLen := len(qName)
-	var servers []string
+	var sequence []SearchSequenceItem
 	for _, candidate := range plugin.forwardMap {
 		candidateLen := len(candidate.domain)
 		if candidateLen > qNameLen {
@@ -111,53 +180,80 @@ func (plugin *PluginForward) Eval(pluginsState *PluginsState, msg *dns.Msg) erro
 		if (qName[qNameLen-candidateLen:] == candidate.domain &&
 			(candidateLen == qNameLen || (qName[qNameLen-candidateLen-1] == '.'))) ||
 			(candidate.domain == ".") {
-			servers = candidate.servers
+			sequence = candidate.sequence
 			break
 		}
 	}
-	if len(servers) == 0 {
+	if len(sequence) == 0 {
 		return nil
 	}
-	server := servers[rand.Intn(len(servers))]
-	if server[:2] == "$." {
+	var err error
+	var respMsg *dns.Msg
+	tries := 4
+	for _, item := range sequence {
+		var server string
+		switch item.typ {
+		case Explicit:
+			server = item.servers[rand.Intn(len(item.servers))]
+		case Bootstrap:
+			server = plugin.bootstrapResolvers[rand.Intn(len(plugin.bootstrapResolvers))]
+		case DHCP:
+			const maxInconsistency = 9
+			for _, dhcpdns := range plugin.dhcpdns {
+				inconsistency, ip, dhcpDNS, err := dhcpdns.Status()
+				if err != nil && ip != "" && inconsistency > maxInconsistency {
+					dlog.Infof("No response from the DHCP server while resolving [%s]", qName)
+					continue
+				}
+				if dhcpDNS != nil && len(dhcpDNS) > 0 {
+					server = net.JoinHostPort(dhcpDNS[rand.Intn(len(dhcpDNS))].String(), "53")
+					break
+				}
+			}
+			if len(server) == 0 {
+				dlog.Infof("DHCP didn't provide any DNS server to forward [%s]", qName)
+				continue
+			}
+		}
 		pluginsState.serverName = server
-		return nil
-	} else if server == "$DHCPDNS" {
-		for _, dhcpdns := range plugin.dhcpdns {
-			n, ip, DNS, err := dhcpdns.Status()
-			maxFail := 9
-			if err != nil && ip != "" && n > maxFail {
-				DNS = nil
-			}
-			if len(DNS) > 0 {
-				server = net.JoinHostPort(DNS[rand.Intn(len(DNS))].String(), "53")
-				break
-			}
+		if len(server) == 0 {
+			continue
 		}
-		if server == "$DHCPDNS" {
-			dlog.Noticef("$DHCPDNS han't been solved, forward to one of bootstrap_resolvers")
-			server = plugin.dhcpdnsFallback[rand.Intn(len(plugin.dhcpdnsFallback))]
+		if strings.HasPrefix(server, "$.") {
+			return nil
 		}
-	}
-	pluginsState.serverName = server
-	client := dns.Client{Net: pluginsState.serverProto, Timeout: pluginsState.timeout}
-	respMsg, _, err := client.Exchange(msg, server)
-	if err != nil {
-		return err
-	}
-	if respMsg.Truncated {
-		client.Net = "tcp"
+
+		if tries == 0 {
+			break
+		}
+		tries--
+		dlog.Debugf("Forwarding [%s] to [%s]", qName, server)
+		client := dns.Client{Net: pluginsState.serverProto, Timeout: pluginsState.timeout}
 		respMsg, _, err = client.Exchange(msg, server)
 		if err != nil {
-			return err
+			continue
 		}
+		if respMsg.Truncated {
+			client.Net = "tcp"
+			respMsg, _, err = client.Exchange(msg, server)
+			if err != nil {
+				continue
+			}
+		}
+		if len(sequence) > 0 {
+			switch respMsg.Rcode {
+			case dns.RcodeNameError, dns.RcodeRefused, dns.RcodeNotAuth:
+				continue
+			}
+		}
+		if edns0 := respMsg.IsEdns0(); edns0 == nil || !edns0.Do() {
+			respMsg.AuthenticatedData = false
+		}
+		respMsg.Id = msg.Id
+		pluginsState.synthResponse = respMsg
+		pluginsState.action = PluginsActionSynth
+		pluginsState.returnCode = PluginsReturnCodeForward
+		return nil
 	}
-	if edns0 := respMsg.IsEdns0(); edns0 == nil || !edns0.Do() {
-		respMsg.AuthenticatedData = false
-	}
-	respMsg.Id = msg.Id
-	pluginsState.synthResponse = respMsg
-	pluginsState.action = PluginsActionSynth
-	pluginsState.returnCode = PluginsReturnCodeForward
-	return nil
+	return err
 }
