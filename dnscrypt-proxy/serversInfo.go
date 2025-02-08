@@ -360,8 +360,9 @@ func (serversInfo *ServersInfo) getOne() *ServerInfo {
 func (serversInfo *ServersInfo) getByName(name string) *ServerInfo {
 	serversInfo.RLock()
 	var serverInfo *ServerInfo
-	for _, serverInfo = range serversInfo.inner {
-		if serverInfo.Name == name {
+	for _, serverInfo2 := range serversInfo.inner {
+		if serverInfo2.Name == name {
+			serverInfo = serverInfo2
 			break
 		}
 	}
