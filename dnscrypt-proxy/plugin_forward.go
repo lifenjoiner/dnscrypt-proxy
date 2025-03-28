@@ -98,11 +98,12 @@ func (plugin *PluginForward) Init(proxy *Proxy) error {
 				}
 				requiresDHCP = true
 			default:
-				if strings.HasPrefix(server, "$") && !strings.HasPrefix(server, "$.") {
+				if strings.HasPrefix(server, "$.") {
+					// sdns server name
+				} else if strings.HasPrefix(server, "$") {
 					dlog.Criticalf("Unknown keyword [%s] at line %d", server, 1+lineNo)
 					continue
-				}
-				if server, err = normalizeIPAndOptionalPort(server, "53"); err != nil {
+				} else if server, err = normalizeIPAndOptionalPort(server, "53"); err != nil {
 					dlog.Criticalf("Syntax error for a forwarding rule at line %d: %s", 1+lineNo, err)
 					continue
 				}
