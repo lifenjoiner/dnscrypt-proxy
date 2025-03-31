@@ -684,7 +684,7 @@ func (proxy *Proxy) processIncomingQuery(
 		pluginsState.serverName = pluginsState.serverName[2:]
 		serverInfo = proxy.serversInfo.getByName(pluginsState.serverName)
 		if serverInfo == nil {
-			dlog.Noticef("[%v] server forwarding to does not exist", pluginsState.serverName)
+			dlog.Criticalf("[%v] server forwarding to does not exist or is unavailable", pluginsState.serverName)
 		}
 	} else {
 		serverInfo = proxy.serversInfo.getOne()
