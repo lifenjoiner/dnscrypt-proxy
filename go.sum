@@ -12,6 +12,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dchest/safefile v0.0.0-20151022103144-855e8d98f185 h1:3T8ZyTDp5QxTx3NU48JVb2u+75xc040fofcBaN+6jPA=
 github.com/dchest/safefile v0.0.0-20151022103144-855e8d98f185/go.mod h1:cFRxtTwTOJkz2x3rQUNCYKWC93yP1VKjR8NUhqFxZNU=
+github.com/fsnotify/fsnotify v1.9.0 h1:2Ml+OJNzbYCTzsxtv8vKSFD9PbJjmhYF14k/jKC7S9k=
+github.com/fsnotify/fsnotify v1.9.0/go.mod h1:8jBTzvmWwFyi3Pb8djgCCO5IBqzKJ/Jwo8TRcHyHii0=
 github.com/go-logr/logr v1.2.4 h1:g01GSCwiDw2xSZfjJ2/T9M+S6pFdcNtFYsp+Y43HYDQ=
 github.com/go-logr/logr v1.2.4/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
 github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 h1:tfuBGBXKqDEevZMzYi5KSi8KkcZtzBcTgAUUtapy0OI=
@@ -49,6 +51,8 @@ github.com/jedisct1/go-hpke-compact v0.0.0-20241212093903-5caa4621366f h1:h5/HKr
 github.com/jedisct1/go-hpke-compact v0.0.0-20241212093903-5caa4621366f/go.mod h1:IjVYCPbDciyDZpJpUIYodX+FvctxGmnHVZ/ZwGBCjNA=
 github.com/jedisct1/go-minisign v0.0.0-20241212093149-d2f9f49435c7 h1:FWpSWRD8FbVkKQu8M1DM9jF5oXFLyE+XpisIYfdzbic=
 github.com/jedisct1/go-minisign v0.0.0-20241212093149-d2f9f49435c7/go.mod h1:BMxO138bOokdgt4UaxZiEfypcSHX0t6SIFimVP1oRfk=
+github.com/jedisct1/go-sieve-cache v0.1.6 h1:cbAUZpdAX2iuX8+eb/nb4G/VlGyFXcKGLAbY9Zaz4XA=
+github.com/jedisct1/go-sieve-cache v0.1.6/go.mod h1:EN88bnjKpiyS9TfZZNbUkCwgpWueZSaUi4vgVtw2988=
 github.com/jedisct1/xsecretbox v0.0.0-20241212092125-3afc4917ac41 h1:TPF+VETyhqUOY51j3KF0uk5cgHQ2Bzi6XCorcGNGfTs=
 github.com/jedisct1/xsecretbox v0.0.0-20241212092125-3afc4917ac41/go.mod h1:eh2PYNEklsNDqUxnbnN9Duvpw1b+ZectZAtDUDRj2tA=
 github.com/jtolds/gls v4.20.0+incompatible h1:xdiiI2gbIgH/gLH7ADydsJ1uDOEzR8yvV7C0MuV77Wo=
@@ -65,8 +69,6 @@ github.com/onsi/ginkgo/v2 v2.9.5 h1:+6Hr4uxzP4XIUyAkg61dWBw8lb/gc4/X5luuxN/EC+Q=
 github.com/onsi/ginkgo/v2 v2.9.5/go.mod h1:tvAoo1QUJwNEU2ITftXTpR7R1RbCzoZUOs3RonqW57k=
 github.com/onsi/gomega v1.27.6 h1:ENqfyGeS5AX/rlXDd/ETokDz93u0YufY1Pgxuy/PvWE=
 github.com/onsi/gomega v1.27.6/go.mod h1:PIQNjfQwkP3aQAH7lf7j87O/5FiNr+ZR8+ipb+qQlhg=
-github.com/opencoff/go-sieve v0.3.0 h1:G68ZixLqQ5KsIJzUFTFpe7lvL+o+PtyHz2a+EbhUVlo=
-github.com/opencoff/go-sieve v0.3.0/go.mod h1:4o5VwfXUsdua7gnmsxR3py04/L23lSsIWIEgdn1WKBg=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

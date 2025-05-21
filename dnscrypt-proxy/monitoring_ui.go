@@ -24,7 +24,7 @@ type MonitoringUIConfig struct {
 	TLSCertificate string `toml:"tls_certificate"`
 	TLSKey         string `toml:"tls_key"`
 	EnableQueryLog bool   `toml:"enable_query_log"`
-	PrivacyLevel   int    `toml:"privacy_level"` // 0: show all, 1: anonymize clients, 2: aggregate only
+	PrivacyLevel   int    `toml:"privacy_level"` // 0: show all details, 1: anonymize client IPs, 2: aggregate only (no individual queries or domains)
 }
 
 // MetricsCollector - Collects and stores metrics for the monitoring UI
@@ -237,8 +237,8 @@ func (ui *MonitoringUI) UpdateMetrics(pluginsState PluginsState, msg *dns.Msg, s
 		dlog.Debugf("Domain %s, count: %d", pluginsState.qName, mc.topDomains[pluginsState.qName])
 	}
 
-	// Update recent queries if enabled
-	if ui.config.EnableQueryLog {
+	// Update recent queries if enabled, but only if privacy level < 2
+	if ui.config.EnableQueryLog && mc.privacyLevel < 2 {
 		var clientIP string
 		if mc.privacyLevel >= 1 {
 			clientIP = "anonymized"
@@ -390,13 +390,35 @@ func (mc *MetricsCollector) GetMetrics() map[string]interface{} {
 		}
 	}
 
-	// Get query type distribution
+	// Get query type distribution sorted by decreasing count and limited to 10
 	queryTypesList := make([]map[string]interface{}, 0)
+
+	// Create a slice of query type-count pairs
+	type queryTypeCount struct {
+		qtype string
+		count uint64
+	}
+	queryTypeCounts := make([]queryTypeCount, 0, len(mc.queryTypes))
 	for qtype, count := range mc.queryTypes {
+		queryTypeCounts = append(queryTypeCounts, queryTypeCount{qtype, count})
+	}
+
+	// Sort by decreasing count
+	sort.Slice(queryTypeCounts, func(i, j int) bool {
+		return queryTypeCounts[i].count > queryTypeCounts[j].count
+	})
+
+	// Take top 10
+	count := 0
+	for _, qtc := range queryTypeCounts {
 		queryTypesList = append(queryTypesList, map[string]interface{}{
-			"type":  qtype,
-			"count": count,
+			"type":  qtc.qtype,
+			"count": qtc.count,
 		})
+		count++
+		if count >= 10 {
+			break
+		}
 	}
 
 	// Return all metrics
