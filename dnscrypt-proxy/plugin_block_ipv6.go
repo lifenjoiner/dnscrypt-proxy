@@ -62,7 +62,7 @@ func (plugin *PluginBlockIPv6) Eval(pluginsState *PluginsState, msg *dns.Msg) er
 	}
 	synth.Ns = []dns.RR{soa}
 	pluginsState.synthResponse = synth
-	pluginsState.action = PluginsActionReject
+	pluginsState.action = PluginsActionSynth
 	pluginsState.returnCode = PluginsReturnCodeSynth
 	return nil
 }
