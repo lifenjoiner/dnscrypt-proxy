@@ -736,30 +736,8 @@ func (proxy *Proxy) processIncomingQuery(
 	// Initialize plugin state
 	pluginsState := NewPluginsState(proxy, clientProto, clientAddr, serverProto, start)
 
-	// Apply query plugins
-	query, _ = pluginsState.ApplyQueryPlugins(&proxy.pluginsGlobals, query)
-
-	// Get server info and initialize parameters
-	var serverInfo *ServerInfo
-	if len(pluginsState.serverName) > 2 && pluginsState.serverName[:2] == "$." {
-		pluginsState.serverName = pluginsState.serverName[2:]
-		serverInfo = proxy.serversInfo.getByName(pluginsState.serverName)
-		if serverInfo == nil {
-			dlog.Criticalf("[%v] server forwarding to does not exist or is unavailable", pluginsState.serverName)
-		}
-	} else {
-		serverInfo = proxy.serversInfo.getOne()
-	}
-	serverName := "-"
-	needsEDNS0Padding := false
-	if serverInfo != nil {
-		serverName = serverInfo.Name
-		needsEDNS0Padding = (serverInfo.Proto == stamps.StampProtoTypeDoH || serverInfo.Proto == stamps.StampProtoTypeTLS)
-	}
-
-	if needsEDNS0Padding {
-		query, _ = pluginsState.addQueryEDNS0Padding(&proxy.pluginsGlobals, query)
-	}
+	// Apply query plugins and get server info
+	query, serverInfo, _ := pluginsState.ApplyQueryPlugins(&proxy.pluginsGlobals, query, proxy)
 
 	if !validateQuery(query) {
 		return response
@@ -791,6 +769,7 @@ func (proxy *Proxy) processIncomingQuery(
 
 	// Process query with a DNS server if there's no cached response
 	if len(response) == 0 && serverInfo != nil {
+		serverName := serverInfo.Name
 		pluginsState.serverName = serverName
 
 		// Exchange DNS request with the server

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jedisct1/dlog"
+	stamps "github.com/jedisct1/go-dnsstamps"
 	"github.com/miekg/dns"
 )
 
@@ -273,17 +274,18 @@ func NewPluginsState(
 func (pluginsState *PluginsState) ApplyQueryPlugins(
 	pluginsGlobals *PluginsGlobals,
 	packet []byte,
-) ([]byte, error) {
+	proxy *Proxy,
+) ([]byte, *ServerInfo, error) {
 	msg := dns.Msg{}
 	if err := msg.Unpack(packet); err != nil {
-		return packet, err
+		return packet, nil, err
 	}
 	if len(msg.Question) != 1 {
-		return packet, errors.New("Unexpected number of questions")
+		return packet, nil, errors.New("Unexpected number of questions")
 	}
 	qName, err := NormalizeQName(msg.Question[0].Name)
 	if err != nil {
-		return packet, err
+		return packet, nil, err
 	}
 	dlog.Debugf("Handling query for [%v]", qName)
 	pluginsState.qName = qName
@@ -310,31 +312,31 @@ func (pluginsState *PluginsState) ApplyQueryPlugins(
 		}
 		if pluginsState.action != PluginsActionContinue {
 			break
+	needsEDNS0Padding := false
+	var serverInfo *ServerInfo
+	if len(pluginsState.serverName) > 2 && pluginsState.serverName[:2] == "$." {
+		pluginsState.serverName = pluginsState.serverName[2:]
+		serverInfo = proxy.serversInfo.getByName(pluginsState.serverName)
+		if serverInfo == nil {
+			dlog.Criticalf("[%v] server forwarding to does not exist or is unavailable", pluginsState.serverName)
 		}
+	} else if pluginsState.action == PluginsActionContinue {
+		serverInfo = proxy.serversInfo.getOne()
 	}
-
+	if serverInfo != nil {
+		needsEDNS0Padding = (serverInfo.Proto == stamps.StampProtoTypeDoH || serverInfo.Proto == stamps.StampProtoTypeTLS)
+	}
 	packet2, err := msg.PackBuffer(packet)
 	if err != nil {
-		return packet, err
+		return packet, serverInfo, err
 	}
-	return packet2, nil
-}
-
-func (pluginsState *PluginsState) addQueryEDNS0Padding(
-	pluginsGlobals *PluginsGlobals,
-	packet []byte,
-) ([]byte, error) {
-	msg := dns.Msg{}
-	if err := msg.Unpack(packet); err != nil {
-		return packet, err
-	}
-	if pluginsState.action == PluginsActionContinue {
-		padLen := 63 - ((len(packet) + 63) & 63)
-		if packet2, _ := addEDNS0PaddingIfNoneFound(&msg, packet, padLen); packet2 != nil {
-			return packet2, nil
+	if needsEDNS0Padding && pluginsState.action == PluginsActionContinue {
+		padLen := 63 - ((len(packet2) + 63) & 63)
+		if paddedPacket2, _ := addEDNS0PaddingIfNoneFound(&msg, packet2, padLen); paddedPacket2 != nil {
+			return paddedPacket2, serverInfo, nil
 		}
 	}
-	return packet, nil
+	return packet2, serverInfo, nil
 }
 
 func (pluginsState *PluginsState) ApplyResponsePlugins(
