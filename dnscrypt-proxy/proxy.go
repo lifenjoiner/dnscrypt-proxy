@@ -736,8 +736,25 @@ func (proxy *Proxy) processIncomingQuery(
 	// Initialize plugin state
 	pluginsState := NewPluginsState(proxy, clientProto, clientAddr, serverProto, start)
 
+	var serverInfo *ServerInfo
 	// Apply query plugins and get server info
-	query, serverInfo, _ := pluginsState.ApplyQueryPlugins(&proxy.pluginsGlobals, query, proxy)
+	query, _ = pluginsState.ApplyQueryPlugins(&proxy.pluginsGlobals, query, func() (*ServerInfo, bool) {
+		if len(pluginsState.serverName) > 2 && pluginsState.serverName[:2] == "$." {
+			pluginsState.serverName = pluginsState.serverName[2:]
+			serverInfo = proxy.serversInfo.getByName(pluginsState.serverName)
+			if serverInfo == nil {
+				dlog.Criticalf("[%v] server forwarding to does not exist or is unavailable", pluginsState.serverName)
+			}
+		} else {
+			serverInfo = proxy.serversInfo.getOne()
+		}
+		needsEDNS0Padding := false
+		if serverInfo != nil {
+			needsEDNS0Padding = (serverInfo.Proto == stamps.StampProtoTypeDoH ||
+				serverInfo.Proto == stamps.StampProtoTypeTLS)
+		}
+		return serverInfo, needsEDNS0Padding
+	})
 
 	if !validateQuery(query) {
 		return response
