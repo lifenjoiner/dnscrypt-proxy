@@ -289,29 +289,30 @@ func (pluginsState *PluginsState) ApplyQueryPlugins(
 	dlog.Debugf("Handling query for [%v]", qName)
 	pluginsState.qName = qName
 	pluginsState.questionMsg = &msg
-	if len(*pluginsGlobals.queryPlugins) == 0 && len(*pluginsGlobals.loggingPlugins) == 0 {
-		return packet, nil
-	}
-	pluginsGlobals.RLock()
-	defer pluginsGlobals.RUnlock()
-	for _, plugin := range *pluginsGlobals.queryPlugins {
-		if err := plugin.Eval(pluginsState, &msg); err != nil {
-			pluginsState.action = PluginsActionDrop
-			return packet, err
+	if len(*pluginsGlobals.queryPlugins) > 0 {
+		pluginsGlobals.RLock()
+		for _, plugin := range *pluginsGlobals.queryPlugins {
+			if err := plugin.Eval(pluginsState, &msg); err != nil {
+				dlog.Debugf("Dropping query: %v", err)
+				pluginsState.action = PluginsActionDrop
+				pluginsGlobals.RUnlock()
+				return packet, err
+			}
+			if pluginsState.action == PluginsActionReject {
+				synth := RefusedResponseFromMessage(
+					&msg,
+					pluginsGlobals.refusedCodeInResponses,
+					pluginsGlobals.respondWithIPv4,
+					pluginsGlobals.respondWithIPv6,
+					pluginsState.rejectTTL,
+				)
+				pluginsState.synthResponse = synth
+			}
+			if pluginsState.action != PluginsActionContinue {
+				break
+			}
 		}
-		if pluginsState.action == PluginsActionReject {
-			synth := RefusedResponseFromMessage(
-				&msg,
-				pluginsGlobals.refusedCodeInResponses,
-				pluginsGlobals.respondWithIPv4,
-				pluginsGlobals.respondWithIPv6,
-				pluginsState.rejectTTL,
-			)
-			pluginsState.synthResponse = synth
-		}
-		if pluginsState.action != PluginsActionContinue {
-			break
-		}
+		pluginsGlobals.RUnlock()
 	}
 	needsEDNS0Padding := false
 	if pluginsState.action == PluginsActionContinue {
@@ -333,7 +334,6 @@ func (pluginsState *PluginsState) ApplyQueryPlugins(
 func (pluginsState *PluginsState) ApplyResponsePlugins(
 	pluginsGlobals *PluginsGlobals,
 	packet []byte,
-	ttl *uint32,
 ) ([]byte, error) {
 	msg := dns.Msg{Compress: true}
 	if err := msg.Unpack(packet); err != nil {
@@ -353,29 +353,30 @@ func (pluginsState *PluginsState) ApplyResponsePlugins(
 		pluginsState.returnCode = PluginsReturnCodeResponseError
 	}
 	removeEDNS0Options(&msg)
-	pluginsGlobals.RLock()
-	defer pluginsGlobals.RUnlock()
-	for _, plugin := range *pluginsGlobals.responsePlugins {
-		if err := plugin.Eval(pluginsState, &msg); err != nil {
-			pluginsState.action = PluginsActionDrop
-			return packet, err
+	if len(*pluginsGlobals.responsePlugins) > 0 {
+		pluginsGlobals.RLock()
+		for _, plugin := range *pluginsGlobals.responsePlugins {
+			if err := plugin.Eval(pluginsState, &msg); err != nil {
+				dlog.Debugf("Dropping response: %v", err)
+				pluginsState.action = PluginsActionDrop
+				pluginsGlobals.RUnlock()
+				return packet, err
+			}
+			if pluginsState.action == PluginsActionReject {
+				synth := RefusedResponseFromMessage(
+					&msg,
+					pluginsGlobals.refusedCodeInResponses,
+					pluginsGlobals.respondWithIPv4,
+					pluginsGlobals.respondWithIPv6,
+					pluginsState.rejectTTL,
+				)
+				pluginsState.synthResponse = synth
+			}
+			if pluginsState.action != PluginsActionContinue {
+				break
+			}
 		}
-		if pluginsState.action == PluginsActionReject {
-			synth := RefusedResponseFromMessage(
-				&msg,
-				pluginsGlobals.refusedCodeInResponses,
-				pluginsGlobals.respondWithIPv4,
-				pluginsGlobals.respondWithIPv6,
-				pluginsState.rejectTTL,
-			)
-			pluginsState.synthResponse = synth
-		}
-		if pluginsState.action != PluginsActionContinue {
-			break
-		}
-	}
-	if ttl != nil {
-		setMaxTTL(&msg, *ttl)
+		pluginsGlobals.RUnlock()
 	}
 	packet2, err := msg.PackBuffer(packet)
 	if err != nil {
