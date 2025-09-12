@@ -485,15 +485,14 @@ func TestPrefetchSources(t *testing.T) {
 			_, e := setupSourceTestCase(t, d, i, nil, downloadTest)
 			e.mtime = d.timeUpd
 			s := &Source{
-				name:          e.Source.name,
-				urls:          e.Source.urls,
-				format:        e.Source.format,
-				minisignKey:   e.Source.minisignKey,
-				cacheFile:     e.Source.cacheFile,
-				cacheTTL:      e.Source.cacheTTL,
-				prefetchDelay: e.Source.prefetchDelay,
-				refresh:       e.Source.refresh,
-				prefix:        e.Source.prefix,
+				name:        e.Source.name,
+				urls:        e.Source.urls,
+				format:      e.Source.format,
+				minisignKey: e.Source.minisignKey,
+				cacheFile:   e.Source.cacheFile,
+				cacheTTL:    e.Source.cacheTTL,
+				refresh:     e.Source.refresh,
+				prefix:      e.Source.prefix,
 				// bin is intentionally left nil
 			}
 			s.refresh = d.timeNow
