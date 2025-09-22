@@ -320,7 +320,12 @@ func (xTransport *XTransport) rebuildTransport() {
 				return nil, err
 			}
 			tlsCfg.ServerName = host
-			return quic.DialEarly(ctx, udpConn, udpAddr, tlsCfg, cfg)
+			conn, err := quic.DialEarly(ctx, udpConn, udpAddr, tlsCfg, cfg)
+			if err != nil {
+				udpConn.Close()
+				return nil, err
+			}
+			return conn, nil
 		}
 		h3Transport := &http3.Transport{DisableCompression: true, TLSClientConfig: &tlsClientConfig, Dial: dial}
 		xTransport.h3Transport = h3Transport
@@ -345,14 +350,11 @@ func (xTransport *XTransport) resolveUsingSystem(host string, forceType uint16) 
 	ips := make([]net.IP, 0)
 	for _, ip := range ipa {
 		ipv4 := ip.To4()
-		if queryIPv4 {
-			if ipv4 != nil {
-				ips = append(ips, ipv4)
-			}
-		} else if queryIPv6 {
-			if ipv4 == nil {
-				ips = append(ips, ip)
-			}
+		if queryIPv4 && ipv4 != nil {
+			ips = append(ips, ipv4)
+		}
+		if queryIPv6 && ipv4 == nil {
+			ips = append(ips, ip)
 		}
 	}
 	return ips, SystemResolverIPTTL, err

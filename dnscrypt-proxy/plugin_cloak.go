@@ -99,11 +99,8 @@ func (plugin *PluginCloak) loadRules(lines string, patternMatcher *PatternMatche
 		if ip != nil {
 			if ipv4 := ip.To4(); ipv4 != nil {
 				cloakedName.ipv4 = append(cloakedName.ipv4, ipv4)
-			} else if ipv6 := ip.To16(); ipv6 != nil {
-				cloakedName.ipv6 = append(cloakedName.ipv6, ipv6)
 			} else {
-				dlog.Errorf("Invalid IP address in cloaking rule at line %d", 1+lineNo)
-				continue
+				cloakedName.ipv6 = append(cloakedName.ipv6, ip)
 			}
 			cloakedName.isIP = true
 		} else {
@@ -121,7 +118,7 @@ func (plugin *PluginCloak) loadRules(lines string, patternMatcher *PatternMatche
 			reversed, _ := dns.ReverseAddr(ip.To4().String())
 			ptrLine = strings.TrimSuffix(reversed, ".")
 		} else {
-			reversed, _ := dns.ReverseAddr(cloakedName.ipv6[0].To16().String())
+			reversed, _ := dns.ReverseAddr(cloakedName.ipv6[0].String())
 			ptrLine = strings.TrimSuffix(reversed, ".")
 		}
 		ptrQueryLine := ptrEntryToQuery(ptrLine)
@@ -276,14 +273,16 @@ func (plugin *PluginCloak) Eval(pluginsState *PluginsState, msg *dns.Msg) error 
 
 		// Use write lock to update cloakedName
 		plugin.Lock()
-		n := Min(16, len(foundIPs))
-		switch question.Qtype {
-		case dns.TypeA:
-			cloakedName.lastUpdate4 = &now
-			cloakedName.ipv4 = foundIPs[:n]
-		case dns.TypeAAAA:
-			cloakedName.lastUpdate6 = &now
-			cloakedName.ipv6 = foundIPs[:n]
+		if len(foundIPs) > 0 {
+			n := Min(16, len(foundIPs))
+			switch question.Qtype {
+			case dns.TypeA:
+				cloakedName.lastUpdate4 = &now
+				cloakedName.ipv4 = foundIPs[:n]
+			case dns.TypeAAAA:
+				cloakedName.lastUpdate6 = &now
+				cloakedName.ipv6 = foundIPs[:n]
+			}
 		}
 		plugin.Unlock()
 
