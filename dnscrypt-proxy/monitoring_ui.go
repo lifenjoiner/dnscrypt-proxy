@@ -122,6 +122,7 @@ type MonitoringUI struct {
 	clients          map[*websocket.Conn]bool
 	clientsMutex     sync.Mutex
 	proxy            *Proxy
+	tasks            chan *PluginsState
 
 	// Mutex for all WebSocket write operations to prevent races
 	writesMutex sync.Mutex
@@ -201,6 +202,7 @@ func NewMonitoringUI(proxy *Proxy) *MonitoringUI {
 		},
 		clients: make(map[*websocket.Conn]bool),
 		proxy:   proxy,
+		tasks:   make(chan *PluginsState, proxy.maxClients),
 		// Initialize broadcast rate limiting with 100ms minimum delay
 		broadcastMinDelay: 100 * time.Millisecond,
 		// Initialize Prometheus path
@@ -255,6 +257,8 @@ func (ui *MonitoringUI) Start() error {
 		}
 	}()
 
+	go ui.WatchTasks()
+
 	return nil
 }
 
@@ -266,8 +270,18 @@ func (ui *MonitoringUI) Stop() error {
 	return nil
 }
 
+// WatchTasks - Consumes the query result queue
+func (ui *MonitoringUI) WatchTasks() {
+	for {
+		select {
+		case pluginsState := <-ui.tasks:
+			ui.UpdateMetrics(pluginsState)
+		}
+	}
+}
+
 // UpdateMetrics - Updates metrics with a new query
-func (ui *MonitoringUI) UpdateMetrics(pluginsState PluginsState, msg *dns.Msg) {
+func (ui *MonitoringUI) UpdateMetrics(pluginsState *PluginsState) {
 	if !ui.config.Enabled {
 		return
 	}
@@ -322,6 +336,7 @@ func (ui *MonitoringUI) UpdateMetrics(pluginsState PluginsState, msg *dns.Msg) {
 	mc.invalidateCache()
 
 	// Update query types - separate lock
+	msg := pluginsState.questionMsg
 	if msg != nil && len(msg.Question) > 0 {
 		question := msg.Question[0]
 		qType, ok := dns.TypeToString[question.Qtype]
@@ -1047,7 +1062,7 @@ func (ui *MonitoringUI) handleTestQuery(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Update metrics
-	ui.UpdateMetrics(pluginsState, msg)
+	ui.tasks <- &pluginsState
 
 	// Return success
 	w.Header().Set("Content-Type", "text/plain")
