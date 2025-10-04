@@ -764,7 +764,6 @@ func (proxy *Proxy) processIncomingQuery(
 	if pluginsState.action == PluginsActionDrop {
 		pluginsState.returnCode = PluginsReturnCodeDrop
 		pluginsState.ApplyLoggingPlugins(&proxy.pluginsGlobals)
-		updateMonitoringMetrics(proxy, &pluginsState)
 		return response
 	}
 
@@ -820,7 +819,6 @@ func (proxy *Proxy) processIncomingQuery(
 			pluginsState.returnCode = PluginsReturnCodeParseError
 		}
 		pluginsState.ApplyLoggingPlugins(&proxy.pluginsGlobals)
-		updateMonitoringMetrics(proxy, &pluginsState)
 		if serverInfo != nil {
 			serverInfo.noticeFailure(proxy)
 		}
@@ -832,9 +830,6 @@ func (proxy *Proxy) processIncomingQuery(
 
 	// Apply logging plugins
 	pluginsState.ApplyLoggingPlugins(&proxy.pluginsGlobals)
-
-	// Update monitoring metrics
-	updateMonitoringMetrics(proxy, &pluginsState)
 
 	return response
 }
