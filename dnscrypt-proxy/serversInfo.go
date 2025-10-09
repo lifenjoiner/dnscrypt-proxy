@@ -176,6 +176,12 @@ func NewServersInfo() ServersInfo {
 	}
 }
 
+func (serversInfo *ServersInfo) registerServers(registeredServers []RegisteredServer) {
+	serversInfo.Lock()
+	serversInfo.registeredServers = registeredServers
+	serversInfo.Unlock()
+}
+
 func (serversInfo *ServersInfo) registerServer(name string, stamp stamps.ServerStamp) {
 	newRegisteredServer := RegisteredServer{name: name, stamp: stamp}
 	serversInfo.Lock()
@@ -187,6 +193,12 @@ func (serversInfo *ServersInfo) registerServer(name string, stamp stamps.ServerS
 		}
 	}
 	serversInfo.registeredServers = append(serversInfo.registeredServers, newRegisteredServer)
+}
+
+func (serversInfo *ServersInfo) registerRelays(registeredRelays []RegisteredServer) {
+	serversInfo.Lock()
+	serversInfo.registeredRelays = registeredRelays
+	serversInfo.Unlock()
 }
 
 func (serversInfo *ServersInfo) registerRelay(name string, stamp stamps.ServerStamp) {
@@ -215,7 +227,7 @@ func (serversInfo *ServersInfo) getGotNewServers() bool {
 	return value
 }
 
-func (serversInfo *ServersInfo) refreshServer(proxy *Proxy, name string, stamp stamps.ServerStamp) error {
+func (serversInfo *ServersInfo) initServerInfo(proxy *Proxy, name string, stamp stamps.ServerStamp) (*ServerInfo, bool, error) {
 	serversInfo.RLock()
 	isNew := true
 	for _, oldServer := range serversInfo.inner {
@@ -227,18 +239,25 @@ func (serversInfo *ServersInfo) refreshServer(proxy *Proxy, name string, stamp s
 	serversInfo.RUnlock()
 	newServer, err := fetchServerInfo(proxy, name, stamp, isNew)
 	if err != nil {
-		return err
+		return nil, isNew, err
 	}
 	if name != newServer.Name {
 		dlog.Fatalf("[%s] != [%s]", name, newServer.Name)
 	}
 	newServer.rtt = ewma.NewMovingAverage(RTTEwmaDecay)
 	newServer.rtt.Set(float64(newServer.initialRtt))
-	isNew = true
+	return &newServer, isNew, err
+}
+
+func (serversInfo *ServersInfo) refreshServer(proxy *Proxy, name string, stamp stamps.ServerStamp) error {
+	newServer, isNew, err := serversInfo.initServerInfo(proxy, name, stamp)
+	if err != nil {
+		return err
+	}
 	serversInfo.Lock()
 	for i, oldServer := range serversInfo.inner {
 		if oldServer.Name == name {
-			serversInfo.inner[i] = &newServer
+			serversInfo.inner[i] = newServer
 			isNew = false
 			break
 		}
@@ -246,7 +265,7 @@ func (serversInfo *ServersInfo) refreshServer(proxy *Proxy, name string, stamp s
 	serversInfo.Unlock()
 	if isNew {
 		serversInfo.Lock()
-		serversInfo.inner = append(serversInfo.inner, &newServer)
+		serversInfo.inner = append(serversInfo.inner, newServer)
 		serversInfo.Unlock()
 		proxy.serversInfo.registerServer(name, stamp)
 	}
@@ -267,12 +286,21 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 	serversInfo.RUnlock()
 	countChannel := make(chan struct{}, proxy.certRefreshConcurrency)
 	errorChannel := make(chan error, serversCount)
+	serverInfoChannel := make(chan *ServerInfo, serversCount)
+	doOverwrite := len(serversInfo.inner) > 0
 	for i := range registeredServers {
 		countChannel <- struct{}{}
 		go func(registeredServer *RegisteredServer) {
-			err := serversInfo.refreshServer(proxy, registeredServer.name, registeredServer.stamp)
-			if err == nil {
-				proxy.xTransport.internalResolverReady = true
+			var serverInfo *ServerInfo
+			var err error
+			if doOverwrite {
+				serverInfo, _, err = serversInfo.initServerInfo(proxy, registeredServer.name, registeredServer.stamp)
+				serverInfoChannel <- serverInfo
+			} else {
+				err = serversInfo.refreshServer(proxy, registeredServer.name, registeredServer.stamp)
+				if err == nil {
+					proxy.xTransport.internalResolverReady = true
+				}
 			}
 			errorChannel <- err
 			<-countChannel
@@ -285,16 +313,29 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 	}
 	liveServers := 0
 	var err error
+	var innerRefresh []*ServerInfo
 	for i := 0; i < serversCount; i++ {
 		err = <-errorChannel
 		if err == nil {
 			liveServers++
 		}
+		if doOverwrite && !serversInfo.getGotNewServers() {
+			serverInfo := <-serverInfoChannel
+			if serverInfo != nil {
+				innerRefresh = append(innerRefresh, serverInfo)
+			}
+		}
 	}
 	if liveServers > 0 {
 		err = nil
 	}
+	if doOverwrite && serversInfo.getGotNewServers() {
+		return 0, err
+	}
 	serversInfo.Lock()
+	if len(innerRefresh) > 0 {
+		serversInfo.inner = innerRefresh
+	}
 	sort.SliceStable(serversInfo.inner, func(i, j int) bool {
 		return serversInfo.inner[i].initialRtt < serversInfo.inner[j].initialRtt
 	})
