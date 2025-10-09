@@ -440,14 +440,10 @@ func (proxy *Proxy) updateRegisteredServers(gotNewRegisteredServers, gotNewRegis
 		}
 	}
 	if gotNewRegisteredServers {
-		for _, registeredServer := range proxy.registeredServers {
-			proxy.serversInfo.registerServer(registeredServer.name, registeredServer.stamp)
-		}
+		proxy.serversInfo.registerServers(proxy.registeredServers)
 	}
 	if gotNewRegisteredRelays {
-		for _, registeredRelay := range proxy.registeredRelays {
-			proxy.serversInfo.registerRelay(registeredRelay.name, registeredRelay.stamp)
-		}
+		proxy.serversInfo.registerRelays(proxy.registeredRelays)
 	}
 	if gotNewRegisteredServers || (gotNewRegisteredRelays && proxy.routes != nil && len(*proxy.routes) > 0) {
 		proxy.serversInfo.setGotNewServers(true)
