@@ -320,7 +320,6 @@ func (proxy *Proxy) StartProxy() {
 	}
 	if liveServers > 0 {
 		proxy.certIgnoreTimestamp = false
-		dlog.Noticef("dnscrypt-proxy is ready - live servers: %d", liveServers)
 	} else if err != nil {
 		dlog.Error(err)
 		dlog.Notice("dnscrypt-proxy is waiting for at least one server to be reachable")
