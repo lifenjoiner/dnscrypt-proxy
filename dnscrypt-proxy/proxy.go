@@ -315,12 +315,13 @@ func (proxy *Proxy) StartProxy() {
 	for proxy.serversInfo.getGotNewServers() {
 		liveServers, err = proxy.serversInfo.refresh(proxy)
 	}
+	if liveServers > 0 {
+		proxy.certIgnoreTimestamp = false
+	}
 	if proxy.showCerts {
 		os.Exit(0)
 	}
-	if liveServers > 0 {
-		proxy.certIgnoreTimestamp = false
-	} else if err != nil {
+	if liveServers <= 0 {
 		dlog.Error(err)
 		dlog.Notice("dnscrypt-proxy is waiting for at least one server to be reachable")
 	}
