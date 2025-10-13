@@ -107,8 +107,6 @@ func (proxy *Proxy) InitPluginsGlobals() error {
 		*queryPlugins = append(*queryPlugins, Plugin(new(PluginAllowName)))
 	}
 
-	*queryPlugins = append(*queryPlugins, Plugin(new(PluginFirefox)))
-
 	if len(proxy.ednsClientSubnets) != 0 {
 		*queryPlugins = append(*queryPlugins, Plugin(new(PluginECS)))
 	}
