@@ -292,19 +292,16 @@ func (proxy *Proxy) StartProxy() {
 		go func() {
 			lastLogTime := time.Now()
 			for {
-				delay, downloaded := PrefetchSources(proxy.xTransport, proxy.sources)
-				if downloaded > 0 {
-					proxy.updateRegisteredServers(false, false)
+				clocksmith.Sleep(PrefetchSources(proxy.xTransport, proxy.sources))
+				proxy.updateRegisteredServers(false, false)
 
-					// Log WP2 statistics every 5 minutes if debug logging is enabled
-					if time.Since(lastLogTime) > 5*time.Minute {
-						proxy.serversInfo.logWP2Stats()
-						lastLogTime = time.Now()
-					}
-
-					runtime.GC()
+				// Log WP2 statistics every 5 minutes if debug logging is enabled
+				if time.Since(lastLogTime) > 5*time.Minute {
+					proxy.serversInfo.logWP2Stats()
+					lastLogTime = time.Now()
 				}
-				clocksmith.Sleep(delay)
+
+				runtime.GC()
 			}
 		}()
 	}

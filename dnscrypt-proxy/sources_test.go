@@ -500,7 +500,7 @@ func TestPrefetchSources(t *testing.T) {
 			expects = append(expects, e)
 		}
 		t.Run("download "+downloadTestName+"/"+strconv.Itoa(d.n), func(t *testing.T) {
-			got, _ := PrefetchSources(d.xTransport, sources)
+			got := PrefetchSources(d.xTransport, sources)
 			checkResult(t, expects, got)
 		})
 	}

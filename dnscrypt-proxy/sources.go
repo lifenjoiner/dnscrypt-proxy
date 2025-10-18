@@ -247,10 +247,9 @@ func NewSource(
 }
 
 // PrefetchSources downloads latest versions of given sources, ensuring they have a valid signature before caching
-func PrefetchSources(xTransport *XTransport, sources []*Source) (time.Duration, int) {
+func PrefetchSources(xTransport *XTransport, sources []*Source) time.Duration {
 	var interval time.Duration
 	now := getCurrentTime()
-	downloaded := 0
 	for _, source := range sources {
 		var delay time.Duration
 		var err error
@@ -264,7 +263,6 @@ func PrefetchSources(xTransport *XTransport, sources []*Source) (time.Duration, 
 				dlog.Infof("Prefetching [%s] failed: %v, will retry in %v", source.name, err, delay)
 			} else {
 				dlog.Debugf("Prefetching [%s] succeeded, next update in %v", source.name, delay)
-				downloaded++
 			}
 		}
 		if interval == 0 || interval > delay {
@@ -275,7 +273,7 @@ func PrefetchSources(xTransport *XTransport, sources []*Source) (time.Duration, 
 		dlog.Debugf("Prefetching delay %v is ceiled to %v", interval, MinimumPrefetchInterval)
 		interval = MinimumPrefetchInterval
 	}
-	return interval, downloaded
+	return interval
 }
 
 func (source *Source) Parse() ([]RegisteredServer, error) {
