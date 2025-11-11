@@ -164,7 +164,7 @@ type ServersInfo struct {
 	registeredRelays  []RegisteredServer
 	lbStrategy        LBStrategy
 	lbEstimator       bool
-	gotNewServers     bool
+	serversChanged    bool
 }
 
 func NewServersInfo() ServersInfo {
@@ -177,8 +177,10 @@ func NewServersInfo() ServersInfo {
 }
 
 func (serversInfo *ServersInfo) registerServers(registeredServers []RegisteredServer) {
+	rs := make([]RegisteredServer, len(registeredServers))
+	copy(rs, registeredServers)
 	serversInfo.Lock()
-	serversInfo.registeredServers = registeredServers
+	serversInfo.registeredServers = rs
 	serversInfo.Unlock()
 }
 
@@ -196,8 +198,10 @@ func (serversInfo *ServersInfo) registerServer(name string, stamp stamps.ServerS
 }
 
 func (serversInfo *ServersInfo) registerRelays(registeredRelays []RegisteredServer) {
+	rr := make([]RegisteredServer, len(registeredRelays))
+	copy(rr, registeredRelays)
 	serversInfo.Lock()
-	serversInfo.registeredRelays = registeredRelays
+	serversInfo.registeredRelays = rr
 	serversInfo.Unlock()
 }
 
@@ -214,15 +218,15 @@ func (serversInfo *ServersInfo) registerRelay(name string, stamp stamps.ServerSt
 	serversInfo.registeredRelays = append(serversInfo.registeredRelays, newRegisteredServer)
 }
 
-func (serversInfo *ServersInfo) setGotNewServers(value bool) {
+func (serversInfo *ServersInfo) serversChangedSet(value bool) {
 	serversInfo.Lock()
-	serversInfo.gotNewServers = value
+	serversInfo.serversChanged = value
 	serversInfo.Unlock()
 }
 
-func (serversInfo *ServersInfo) getGotNewServers() bool {
+func (serversInfo *ServersInfo) serversChangedGet() bool {
 	serversInfo.RLock()
-	value := serversInfo.gotNewServers
+	value := serversInfo.serversChanged
 	serversInfo.RUnlock()
 	return value
 }
@@ -280,20 +284,20 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 	serversCount := len(serversInfo.registeredServers)
 	registeredServers := make([]RegisteredServer, serversCount)
 	copy(registeredServers, serversInfo.registeredServers)
-	if serversInfo.gotNewServers {
-		serversInfo.gotNewServers = false
+	if serversInfo.serversChanged {
+		serversInfo.serversChanged = false
 	}
 	serversInfo.RUnlock()
 	countChannel := make(chan struct{}, proxy.certRefreshConcurrency)
 	errorChannel := make(chan error, serversCount)
 	serverInfoChannel := make(chan *ServerInfo, serversCount)
-	doOverwrite := len(serversInfo.inner) > 0
+	rebuildInner := len(serversInfo.inner) > 0
 	for i := range registeredServers {
 		countChannel <- struct{}{}
 		go func(registeredServer *RegisteredServer) {
 			var serverInfo *ServerInfo
 			var err error
-			if doOverwrite {
+			if rebuildInner {
 				serverInfo, _, err = serversInfo.initServerInfo(proxy, registeredServer.name, registeredServer.stamp)
 				serverInfoChannel <- serverInfo
 			} else {
@@ -305,7 +309,7 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 			errorChannel <- err
 			<-countChannel
 		}(&registeredServers[i])
-		if serversInfo.getGotNewServers() {
+		if serversInfo.serversChangedGet() {
 			dlog.Notice("Got new servers, will skip remaining and start new refreshing")
 			serversCount = i + 1
 			break
@@ -319,7 +323,7 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 		if err == nil {
 			liveServers++
 		}
-		if doOverwrite && !serversInfo.getGotNewServers() {
+		if rebuildInner && !serversInfo.serversChangedGet() {
 			serverInfo := <-serverInfoChannel
 			if serverInfo != nil {
 				innerRefresh = append(innerRefresh, serverInfo)
@@ -329,7 +333,7 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 	if liveServers > 0 {
 		err = nil
 	}
-	if doOverwrite && serversInfo.getGotNewServers() {
+	if rebuildInner && serversInfo.serversChangedGet() {
 		return 0, err
 	}
 	serversInfo.Lock()

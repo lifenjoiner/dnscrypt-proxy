@@ -659,14 +659,12 @@ func (config *Config) loadSources(proxy *Proxy) error {
 			return err
 		}
 	}
-	gotNewRegisteredServers, gotNewRegisteredRelays := false, false
 	for name, config := range config.StaticsConfig {
 		if stamp, err := stamps.NewServerStampFromString(config.Stamp); err == nil {
 			if stamp.Proto == stamps.StampProtoTypeDNSCryptRelay || stamp.Proto == stamps.StampProtoTypeODoHRelay {
 				dlog.Debugf("Adding [%s] to the set of available static relays", name)
 				registeredServer := RegisteredServer{name: name, stamp: stamp, description: "static relay"}
-				proxy.registeredRelays = append(proxy.registeredRelays, registeredServer)
-				gotNewRegisteredRelays = true
+				proxy.staticRelays = append(proxy.staticRelays, registeredServer)
 			}
 		}
 	}
@@ -687,19 +685,14 @@ func (config *Config) loadSources(proxy *Proxy) error {
 		if err != nil {
 			return fmt.Errorf("Stamp error for the static [%s] definition: [%v]", serverName, err)
 		}
-		proxy.registeredServers = append(proxy.registeredServers, RegisteredServer{name: serverName, stamp: stamp})
-		gotNewRegisteredServers = true
+		proxy.staticServers = append(proxy.staticServers, RegisteredServer{name: serverName, stamp: stamp})
 	}
-	if err := proxy.updateRegisteredServers(gotNewRegisteredServers, gotNewRegisteredRelays); err != nil {
+	if err := proxy.updateRegisteredServers(); err != nil {
 		return err
 	}
-	rs1 := proxy.registeredServers
-	rs2 := proxy.serversInfo.registeredServers
-	rand.Shuffle(len(rs1), func(i, j int) {
-		rs1[i], rs1[j] = rs1[j], rs1[i]
-	})
-	rand.Shuffle(len(rs2), func(i, j int) {
-		rs2[i], rs2[j] = rs2[j], rs2[i]
+	rs := proxy.serversInfo.registeredServers
+	rand.Shuffle(len(rs), func(i, j int) {
+		rs[i], rs[j] = rs[j], rs[i]
 	})
 	return nil
 }
