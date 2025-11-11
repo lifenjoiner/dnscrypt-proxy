@@ -86,6 +86,7 @@ type Proxy struct {
 	cacheMaxTTL                   uint32
 	clientsCount                  uint32
 	maxClients                    uint32
+	timeoutLoadReduction          float64
 	cacheMinTTL                   uint32
 	cacheNegMaxTTL                uint32
 	cloakTTL                      uint32
@@ -492,7 +493,8 @@ func (proxy *Proxy) tcpListener(acceptPc *net.TCPListener) {
 		go func() {
 			defer clientPc.Close()
 			defer proxy.clientsCountDec()
-			if err := clientPc.SetDeadline(time.Now().Add(proxy.timeout)); err != nil {
+			dynamicTimeout := proxy.getDynamicTimeout()
+			if err := clientPc.SetDeadline(time.Now().Add(dynamicTimeout)); err != nil {
 				return
 			}
 			start := time.Now()
@@ -704,6 +706,27 @@ func (proxy *Proxy) clientsCountDec() {
 	}
 }
 
+func (proxy *Proxy) getDynamicTimeout() time.Duration {
+	if proxy.timeoutLoadReduction <= 0.0 || proxy.maxClients == 0 {
+		return proxy.timeout
+	}
+
+	currentClients := atomic.LoadUint32(&proxy.clientsCount)
+	utilization := float64(currentClients) / float64(proxy.maxClients)
+
+	// Use quartic (power 4) curve for slow decrease at low load, sharp decrease near limit
+	utilization4 := utilization * utilization * utilization * utilization
+	factor := 1.0 - (utilization4 * proxy.timeoutLoadReduction)
+	if factor < 0.1 {
+		factor = 0.1
+	}
+
+	dynamicTimeout := time.Duration(float64(proxy.timeout) * factor)
+	dlog.Debugf("Dynamic timeout: %v (utilization: %.2f%%, factor: %.2f)", dynamicTimeout, utilization*100, factor)
+
+	return dynamicTimeout
+}
+
 func (proxy *Proxy) processIncomingQuery(
 	clientProto string,
 	serverProto string,
@@ -731,7 +754,7 @@ func (proxy *Proxy) processIncomingQuery(
 
 	var serverInfo *ServerInfo
 	// Apply query plugins and get server info
-	query, _ = pluginsState.ApplyQueryPlugins(&proxy.pluginsGlobals, query, func() (*ServerInfo, bool) {
+	query, err := pluginsState.ApplyQueryPlugins(&proxy.pluginsGlobals, query, func() (*ServerInfo, bool) {
 		if len(pluginsState.serverName) > 2 && pluginsState.serverName[:2] == "$." {
 			pluginsState.serverName = pluginsState.serverName[2:]
 			serverInfo = proxy.serversInfo.getByName(pluginsState.serverName)
@@ -748,7 +771,13 @@ func (proxy *Proxy) processIncomingQuery(
 		}
 		return serverInfo, needsEDNS0Padding
 	})
-
+	if err != nil {
+		dlog.Debugf("Plugins failed: %v", err)
+		pluginsState.action = PluginsActionDrop
+		pluginsState.returnCode = PluginsReturnCodeDrop
+		pluginsState.ApplyLoggingPlugins(&proxy.pluginsGlobals)
+		return response
+	}
 	if !validateQuery(query) {
 		return response
 	}
@@ -761,7 +790,6 @@ func (proxy *Proxy) processIncomingQuery(
 	}
 
 	// Handle synthesized responses from plugins
-	var err error
 	if pluginsState.synthResponse != nil {
 		response, err = handleSynthesizedResponse(&pluginsState, pluginsState.synthResponse)
 		if err != nil {
