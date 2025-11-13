@@ -288,6 +288,9 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 		serversInfo.serversChanged = false
 	}
 	serversInfo.RUnlock()
+	rand.Shuffle(len(registeredServers), func(i, j int) {
+		registeredServers[i], registeredServers[j] = registeredServers[j], registeredServers[i]
+	})
 	countChannel := make(chan struct{}, proxy.certRefreshConcurrency)
 	errorChannel := make(chan error, serversCount)
 	serverInfoChannel := make(chan *ServerInfo, serversCount)
