@@ -12,8 +12,9 @@ t() {
     false
 }
 
+# Need bash rather than dash to get $LINENO on Ubuntu
 fail() (
-    echo "*** Test #${TEST_COUNT} FAILED, line: $1) ***" >&2
+    echo "*** Test #${TEST_COUNT} FAILED, line: $1 ***" >&2
 )
 
 section() {
