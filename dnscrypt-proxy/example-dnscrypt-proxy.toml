@@ -212,6 +212,14 @@ keepalive = 30
 
 # enable_hot_reload = false
 
+## Perform garbage collection on threads, in minitues.
+## Normally, high workload won't yield too many threads. Keeping them improves efficiency.
+## When wake up from hibernation, NIC is not ready, and/or a burst of requests,
+## these may cause threads grow to hundreds.
+## It should not be too frequent. Default is 0, meaning disabled.
+
+# thread_gc_interval = 11
+
 
 ###############################################################################
 #                                Logging                                       #

@@ -112,6 +112,7 @@ type Proxy struct {
 	listenersMu                   sync.Mutex
 	ipCryptConfig                 *IPCryptConfig
 	udpConnPool                   *UDPConnPool
+	threadGCInterval              int
 }
 
 func (proxy *Proxy) registerUDPListener(conn *net.UDPConn) {
@@ -345,6 +346,8 @@ func (proxy *Proxy) StartProxy() {
 			}
 		}()
 	}
+
+	go threadGC(proxy.threadGCInterval)
 }
 
 func sleepIncludeInertia(duration time.Duration) {
@@ -956,5 +959,49 @@ func NewProxy() *Proxy {
 	return &Proxy{
 		serversInfo: NewServersInfo(),
 		udpConnPool: NewUDPConnPool(),
+	}
+}
+
+// Reduce massive idle threads yielded by the request spikes during wake-up from hibernation
+// https://github.com/golang/go/issues/14592
+// net.Conn is associated with IOCP on Windows by go runtime, but it still may be terminated.
+func threadGC(interval int) {
+	if interval <= 0 {
+		return
+	}
+	sweepInterval := time.Duration(interval) * time.Minute
+	numThreads, _ := runtime.ThreadCreateProfile(nil)
+	numMin := 10000
+	// dynamic ntdll.dll!TpReleaseCleanupGroupMembers or relaxed boundary
+	numTolerance := 3
+	numDesired := numMin
+	oneThreadChan := make(chan struct{}, 1)
+	for {
+		sleepIncludeInertia(sweepInterval)
+		numGoroutines := runtime.NumGoroutine()
+		if numGoroutines < numMin {
+			numMin = numGoroutines
+		}
+		numThreads, _ = runtime.ThreadCreateProfile(nil)
+		// didn't increase or reduced ntdll.dll!TpReleaseCleanupGroupMembers or has some locked
+		if numThreads-numDesired <= numTolerance {
+			numDesired = numMin
+		}
+		numExcess := 0
+		if numGoroutines >= numThreads {
+			numDesired = numThreads
+		} else {
+			numDesired = Max((numDesired+numThreads)/2, numGoroutines)
+			numExcess = numThreads - numDesired
+			numExcess -= numTolerance
+		}
+		dlog.Infof("Number of goroutines: %d, min: %d, threads: %d, desired: %d", numGoroutines, numMin, numThreads, numDesired)
+		for ; numExcess > 0; numExcess-- {
+			oneThreadChan <- struct{}{}
+			go func() {
+				runtime.LockOSThread()
+				<-oneThreadChan
+			}()
+		}
 	}
 }
