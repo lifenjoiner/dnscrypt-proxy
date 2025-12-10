@@ -6,7 +6,9 @@ import (
 )
 
 // SDK ws2ipdef.h
-const IPV6_TCLASS = 39
+const (
+	IPV6_TCLASS = 39 // Not defined in Go's syscall package for Windows
+)
 
 func (proxy *Proxy) udpListenerConfig() (*net.ListenConfig, error) {
 	return &net.ListenConfig{
