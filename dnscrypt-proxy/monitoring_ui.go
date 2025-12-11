@@ -245,6 +245,9 @@ func (ui *MonitoringUI) Start() error {
 	// Start HTTP server
 	go func() {
 		var err error
+		if runtime.GOOS == "windows" && ui.proxy.threadGCInterval > 0 {
+			runtime.LockOSThread()
+		}
 		if ui.config.TLSCertificate != "" && ui.config.TLSKey != "" {
 			dlog.Noticef("Starting monitoring UI on https://%s", ui.config.ListenAddress)
 			err = ui.httpServer.ListenAndServeTLS(ui.config.TLSCertificate, ui.config.TLSKey)
