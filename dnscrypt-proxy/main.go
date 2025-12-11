@@ -118,9 +118,6 @@ func main() {
 	if err := ConfigLoad(app.proxy, app.flags); err != nil {
 		dlog.Fatal(err)
 	}
-	if runtime.GOOS == "windows" && app.proxy.threadGCInterval > 0 {
-		runtime.LockOSThread()
-	}
 	if svc != nil {
 		if err := svc.Run(); err != nil {
 			dlog.Fatal(err)
