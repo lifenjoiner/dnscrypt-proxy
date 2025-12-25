@@ -21,9 +21,9 @@ import (
 	"sync"
 	"time"
 
+	"codeberg.org/miekg/dns"
 	"github.com/jedisct1/dlog"
 	stamps "github.com/jedisct1/go-dnsstamps"
-	"github.com/miekg/dns"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"golang.org/x/net/http2"
@@ -77,7 +77,6 @@ type XTransport struct {
 	http3                    bool
 	http3Probe               bool
 	tlsDisableSessionTickets bool
-	tlsCipherSuite           []uint16
 	proxyDialer              *netproxy.Dialer
 	httpProxyFunction        func(*http.Request) (*url.URL, error)
 	tlsClientCreds           DOHClientCreds
@@ -100,7 +99,6 @@ func NewXTransport() *XTransport {
 		useIPv6:                  false,
 		http3Probe:               false,
 		tlsDisableSessionTickets: false,
-		tlsCipherSuite:           nil,
 		keyLogWriter:             nil,
 	}
 	return &xTransport
@@ -327,40 +325,8 @@ func (xTransport *XTransport) rebuildTransport() {
 		tlsClientConfig.Certificates = []tls.Certificate{cert}
 	}
 
-	overrideCipherSuite := len(xTransport.tlsCipherSuite) > 0
-	if xTransport.tlsDisableSessionTickets || overrideCipherSuite {
-		tlsClientConfig.SessionTicketsDisabled = xTransport.tlsDisableSessionTickets
-		if !xTransport.tlsDisableSessionTickets {
-			tlsClientConfig.ClientSessionCache = tls.NewLRUClientSessionCache(10)
-		}
-		if overrideCipherSuite {
-			tlsClientConfig.PreferServerCipherSuites = false
-			tlsClientConfig.CipherSuites = xTransport.tlsCipherSuite
-
-			// Go doesn't allow changing the cipher suite with TLS 1.3
-			// So, check if the requested set of ciphers matches the TLS 1.3 suite.
-			// If it doesn't, downgrade to TLS 1.2
-			compatibleSuitesCount := 0
-			for _, suite := range tls.CipherSuites() {
-				if suite.Insecure {
-					continue
-				}
-				for _, supportedVersion := range suite.SupportedVersions {
-					if supportedVersion == tls.VersionTLS12 {
-						for _, expectedSuiteID := range xTransport.tlsCipherSuite {
-							if expectedSuiteID == suite.ID {
-								compatibleSuitesCount += 1
-								break
-							}
-						}
-					}
-				}
-			}
-			if compatibleSuitesCount != len(tls.CipherSuites()) {
-				dlog.Notice("Explicit cipher suite configured - downgrading to TLS 1.2")
-				tlsClientConfig.MaxVersion = tls.VersionTLS12
-			}
-		}
+	if xTransport.tlsDisableSessionTickets {
+		tlsClientConfig.SessionTicketsDisabled = true
 	}
 	transport.TLSClientConfig = &tlsClientConfig
 	if http2Transport, _ := http2.ConfigureTransports(transport); http2Transport != nil {
@@ -472,7 +438,9 @@ func (xTransport *XTransport) resolveUsingResolver(
 	resolver string,
 	returnIPv4, returnIPv6 bool,
 ) (ips []net.IP, ttl time.Duration, err error) {
-	dnsClient := dns.Client{Net: proto, ReadTimeout: ResolverReadTimeout}
+	transport := dns.NewTransport()
+	transport.ReadTimeout = ResolverReadTimeout
+	dnsClient := dns.Client{Transport: transport}
 	queryType := make([]uint16, 0, 2)
 	if returnIPv4 {
 		queryType = append(queryType, dns.TypeA)
@@ -481,21 +449,24 @@ func (xTransport *XTransport) resolveUsingResolver(
 		queryType = append(queryType, dns.TypeAAAA)
 	}
 	var rrTTL uint32
+	ctx, cancel := context.WithTimeout(context.Background(), ResolverReadTimeout)
+	defer cancel()
 	for _, rrType := range queryType {
-		msg := dns.Msg{}
-		msg.SetQuestion(dns.Fqdn(host), rrType)
-		msg.SetEdns0(uint16(MaxDNSPacketSize), true)
+		msg := dns.NewMsg(fqdn(host), rrType)
+		msg.RecursionDesired = true
+		msg.UDPSize = uint16(MaxDNSPacketSize)
+		msg.Security = true
 		var in *dns.Msg
-		if in, _, err = dnsClient.Exchange(&msg, resolver); err == nil {
+		if in, _, err = dnsClient.Exchange(ctx, msg, proto, resolver); err == nil {
 			for _, answer := range in.Answer {
-				if answer.Header().Rrtype == rrType {
+				if dns.RRToType(answer) == rrType {
 					switch rrType {
 					case dns.TypeA:
-						ips = append(ips, answer.(*dns.A).A)
+						ips = append(ips, answer.(*dns.A).A.Addr.AsSlice())
 					case dns.TypeAAAA:
-						ips = append(ips, answer.(*dns.AAAA).AAAA)
+						ips = append(ips, answer.(*dns.AAAA).AAAA.Addr.AsSlice())
 					}
-					rrTTL = answer.Header().Ttl
+					rrTTL = answer.Header().TTL
 				}
 			}
 		}
@@ -756,13 +727,6 @@ func (xTransport *XTransport) Fetch(
 	}
 	if err != nil {
 		dlog.Debugf("[%s]: [%s]", req.URL, err)
-		if xTransport.tlsCipherSuite != nil && strings.Contains(err.Error(), "handshake failure") {
-			dlog.Warnf(
-				"TLS handshake failure - Try changing or deleting the tls_cipher_suite value in the configuration file",
-			)
-			xTransport.tlsCipherSuite = nil
-			xTransport.rebuildTransport()
-		}
 		return nil, statusCode, nil, rtt, err
 	}
 	if xTransport.h3Transport != nil && !hasAltSupport {

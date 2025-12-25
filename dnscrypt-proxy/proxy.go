@@ -51,7 +51,6 @@ type Proxy struct {
 	localDoHCertKeyFile           string
 	captivePortalMapFile          string
 	localDoHPath                  string
-	mainProto                     string
 	cloakFile                     string
 	forwardFile                   string
 	blockIPFormat                 string
@@ -509,7 +508,7 @@ func (proxy *Proxy) udpListener(clientPc *net.UDPConn) {
 			dlog.Warnf("Too many incoming connections (max=%d), number of goroutines: %d", proxy.maxClients, runtime.NumGoroutine())
 			proxy.processIncomingQuery(
 				"udp",
-				proxy.mainProto,
+				proxy.xTransport.mainProto,
 				packet,
 				&clientAddr,
 				clientPc,
@@ -520,7 +519,7 @@ func (proxy *Proxy) udpListener(clientPc *net.UDPConn) {
 		}
 		go func() {
 			defer proxy.clientsCountDec()
-			proxy.processIncomingQuery("udp", proxy.mainProto, packet, &clientAddr, clientPc, time.Now(), false)
+			proxy.processIncomingQuery("udp", proxy.xTransport.mainProto, packet, &clientAddr, clientPc, time.Now(), false)
 		}()
 	}
 }

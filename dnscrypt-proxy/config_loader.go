@@ -65,8 +65,6 @@ func configureLogging(proxy *Proxy, flags *ConfigFlags, config *Config) {
 // configureXTransport - Configures the XTransport
 func configureXTransport(proxy *Proxy, config *Config) error {
 	proxy.xTransport.tlsDisableSessionTickets = config.TLSDisableSessionTickets
-	proxy.xTransport.tlsCipherSuite = config.TLSCipherSuite
-	proxy.xTransport.mainProto = proxy.mainProto
 	proxy.xTransport.http3 = config.HTTP3
 	proxy.xTransport.http3Probe = config.HTTP3Probe
 
@@ -120,7 +118,7 @@ func configureXTransport(proxy *Proxy, config *Config) error {
 			return fmt.Errorf("Unable to use the proxy: [%v]", err)
 		}
 		proxy.xTransport.proxyDialer = &proxyDialer
-		proxy.mainProto = "tcp"
+		proxy.xTransport.mainProto = "tcp"
 	}
 
 	proxy.xTransport.rebuildTransport()
@@ -165,9 +163,6 @@ func configureDoHClientAuth(proxy *Proxy, config *Config) error {
 
 // configureServerParams - Configures server parameters
 func configureServerParams(proxy *Proxy, config *Config) {
-	// Handle legacy response format for blocked queries (handled elsewhere)
-	// This is handled in the main ConfigLoad function
-
 	proxy.blockedQueryResponse = config.BlockedQueryResponse
 	proxy.timeout = time.Duration(config.Timeout) * time.Millisecond
 	proxy.maxClients = config.MaxClients
@@ -176,9 +171,9 @@ func configureServerParams(proxy *Proxy, config *Config) {
 		dlog.Warnf("timeout_load_reduction must be between 0.0 and 1.0, using default 0.75")
 		proxy.timeoutLoadReduction = 0.75
 	}
-	proxy.mainProto = "udp"
+	proxy.xTransport.mainProto = "udp"
 	if config.ForceTCP {
-		proxy.mainProto = "tcp"
+		proxy.xTransport.mainProto = "tcp"
 	}
 
 	// Configure certificate refresh parameters
