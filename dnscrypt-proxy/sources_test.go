@@ -411,7 +411,7 @@ func TestNewSource(t *testing.T) {
 		refreshDelay, cacheTTL time.Duration
 		e                      *SourceTestExpect
 	}{
-		{"", "", 0, 0, &SourceTestExpect{err: " ", Source: &Source{name: "short refresh delay", urls: []*url.URL{}, cacheTTL: DefaultPrefetchDelay, prefetchDelay: DefaultPrefetchDelay, prefix: ""}}},
+		{"", "", DefaultPrefetchDelay, 0, &SourceTestExpect{err: " ", Source: &Source{name: "short refresh delay", urls: []*url.URL{}, cacheTTL: DefaultPrefetchDelay, prefetchDelay: DefaultPrefetchDelay, prefix: ""}}},
 		{"v1", d.keyStr, DefaultPrefetchDelay * 2, DefaultPrefetchDelay * 2, &SourceTestExpect{err: "Unsupported source format", Source: &Source{name: "old format", urls: []*url.URL{}, cacheTTL: DefaultPrefetchDelay * 2, prefetchDelay: DefaultPrefetchDelay * 2}}},
 		{"v2", "", DefaultPrefetchDelay * 3, DefaultPrefetchDelay * 3, &SourceTestExpect{err: "Invalid encoded public key", Source: &Source{name: "invalid public key", urls: []*url.URL{}, cacheTTL: DefaultPrefetchDelay * 3, prefetchDelay: DefaultPrefetchDelay * 3}}},
 	} {
