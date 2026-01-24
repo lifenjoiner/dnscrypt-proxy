@@ -2,6 +2,7 @@ package dns
 
 import (
 	"encoding/hex"
+	"math"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -29,11 +30,11 @@ const (
 	// MinMsgSize is the minimal size of a DNS message.
 	MinMsgSize = 512
 	// MaxMsgSize is the largest possible DNS message.
-	MaxMsgSize = 65535
+	MaxMsgSize = math.MaxUint16
 	// MsgHeaderSize is the length of the header in the DNS message.
 	MsgHeaderSize = 12
 	// MaxSerialIncrement is the maximum difference between two serial numbers. See RFC 1982.
-	MaxSerialIncrement = 2147483647
+	MaxSerialIncrement = math.MaxUint32 / 2 // 2147483647
 
 	defaultTTL = 3600 // Default internal TTL.
 )
@@ -59,7 +60,7 @@ type RDATA interface {
 	String() string
 }
 
-// The Typer interface it will be used to return the type of RR in the RRToType function or the EDNS0 option
+// The Typer interface is used to return the type of RR in the RRToType function or the EDNS0 option
 // code when the "RR" is an EDNS0 option. This is only needed for RRs that are defined outside of this package.
 // Once this method is defined the following extra registration needs to happen:
 //
@@ -82,7 +83,8 @@ type Comparer interface {
 type Packer interface {
 	// Pack packs the RR into msg at offset off. This method only needs to deals with the RR's rdata, as the
 	// header is taken care off. For examples of such code look in zmsg.go. The returned int is the new offset in
-	// msg after this RR is packed.
+	// msg after this RR is packed. For EDNS0 types this only need to pack the data, not the type-length-value
+	// (TLV) header.
 	Pack(msg []byte, off int) (int, error)
 	// Unpack unpacks the RR. Data is the byte slice that should contain the all the data for the RR.
 	Unpack(data []byte) error
@@ -103,7 +105,7 @@ type Cloner interface {
 // RFC 7719, Section 4 "RRset", use [dnsutil.IsRRset] to make that determination.
 // The type is defined here to implement the [sort.Interface].
 //
-// Typical use for sort a slice of RRs: sort.Sort(dns.RRset(....)).
+// Typical use for sorting a slice of RRs: sort.Sort(dns.RRset(....)).
 type RRset []RR
 
 // Header is the header in a DNS resource record. It implements the RR interface, as a header is the RR

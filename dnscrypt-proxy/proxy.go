@@ -905,6 +905,9 @@ func (proxy *Proxy) processIncomingQuery(
 	if len(response) == 0 && serverInfo != nil {
 		serverName := serverInfo.Name
 		pluginsState.serverName = serverName
+		if serverInfo.Relay != nil {
+			pluginsState.relayName = serverInfo.Relay.Name
+		}
 
 		// Exchange DNS request with the server
 		exchangeResponse, err := handleDNSExchange(proxy, serverInfo, &pluginsState, query, serverProto)
