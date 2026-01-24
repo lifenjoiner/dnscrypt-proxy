@@ -28,15 +28,15 @@ const MinimumPrefetchInterval time.Duration = 10 * time.Minute
 
 type Source struct {
 	sync.RWMutex
-	name        string
-	urls        []*url.URL
-	format      SourceFormat
-	bin         []byte
-	minisignKey *minisign.PublicKey
-	cacheFile   string
-	cacheTTL    time.Duration
-	refresh     time.Time
-	prefix      string
+	name                    string
+	urls                    []*url.URL
+	format                  SourceFormat
+	bin                     []byte
+	minisignKey             *minisign.PublicKey
+	cacheFile               string
+	cacheTTL, prefetchDelay time.Duration
+	refresh                 time.Time
+	prefix                  string
 }
 
 // timeNow is a function variable that provides the current time
@@ -204,14 +204,22 @@ func NewSource(
 	cacheFile string,
 	formatStr string,
 	refreshDelay time.Duration,
+	cacheTTL time.Duration,
 	prefix string,
 ) (*Source, error) {
+	if cacheTTL < refreshDelay {
+		cacheTTL = refreshDelay
+	}
+	if cacheTTL > 168*time.Hour {
+		cacheTTL = 168 * time.Hour
+	}
 	source := &Source{
-		name:      name,
-		urls:      []*url.URL{},
-		cacheFile: cacheFile,
-		cacheTTL:  refreshDelay,
-		prefix:    prefix,
+		name:          name,
+		urls:          []*url.URL{},
+		cacheFile:     cacheFile,
+		cacheTTL:      cacheTTL,
+		prefetchDelay: refreshDelay,
+		prefix:        prefix,
 	}
 	if formatStr == "v2" {
 		source.format = SourceFormatV2

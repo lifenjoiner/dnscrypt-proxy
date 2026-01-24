@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"codeberg.org/miekg/dns/pool"
+	"codeberg.org/miekg/dns/pkg/pool"
 )
 
 // Default maximum number of TCP queries before we close the socket.
@@ -96,13 +96,6 @@ type Server struct {
 	// Maximum number of TCP queries before we close the socket. Default is [MaxTCPQueries], unlimited if -1.
 	// See [ResponseWriter.Hijack] on how a handler can bypass this.
 	MaxTCPQueries int
-	// Whether to set the SO_REUSEPORT socket option, allowing multiple listeners to be bound to a single address.
-	// It is only supported on certain GOOSes and when using ListenAndServe.
-	ReusePort bool
-	// Whether to set the SO_REUSEADDR socket option, allowing multiple listeners to be bound to a single address.
-	// Crucially this allows binding when an existing server is listening on `0.0.0.0` or `::`.
-	// It is only supported on certain GOOSes and when using ListenAndServe.
-	ReuseAddr bool
 
 	// AcceptMsgFunc will check the incoming message and will reject it early in the process. Defaults to
 	// [DefaultMsgAcceptFunc].
@@ -122,8 +115,17 @@ type Server struct {
 	ctx      context.Context // server wide context to signal shutdown to running handlers
 	cancel   context.CancelFunc
 	exited   chan struct{}
-	once     sync.Once
 	shutdown chan bool
+
+	once sync.Once
+
+	// Whether to set the SO_REUSEPORT socket option, allowing multiple listeners to be bound to a single address.
+	// It is only supported on certain GOOSes and when using ListenAndServe.
+	ReusePort bool
+	// Whether to set the SO_REUSEADDR socket option, allowing multiple listeners to be bound to a single address.
+	// Crucially this allows binding when an existing server is listening on `0.0.0.0` or `::`.
+	// It is only supported on certain GOOSes and when using ListenAndServe.
+	ReuseAddr bool
 }
 
 // NewServer return a new server initialized with some defaults
@@ -260,10 +262,10 @@ func (srv *Server) listenTCP(ln net.Listener) {
 // If this is a not a const, but var, or worse a field in [Server] it's about 10k qps *slower*.
 // cd cmd/reflect; go test -v -count=1 # check the perf values, 15 does 360K on my M2 8-core with Asahi Linux
 
-// BatchSize controls the maximum of packets we should read using recvmmsg, using ReadBatch, a tradeoff
+// BatchSize controls the maximum of packets we should read using recvmmsg(2), via ReadBatch, a tradeoff
 // needs to be made with how much memory needs to be pre-allocated and how fast things should go. It is
-// set to set to 15.
-const BatchSize = 15
+// experimentally set to 20.
+const BatchSize = 20
 
 // Serve a new TCP connection. ServeUDP is split out in server_no_recvmmsg.go and server_recvmmsg.go.
 func (srv *Server) serveTCP(wg *sync.WaitGroup, conn net.Conn) {
@@ -283,9 +285,11 @@ func (srv *Server) serveTCP(wg *sync.WaitGroup, conn net.Conn) {
 		r := &Msg{Data: srv.MsgPool.Get()}
 		if _, err := r.ReadFrom(conn); err != nil {
 			if isEOFOrClosedNetwork(err) {
+				srv.MsgPool.Put(r.Data)
 				break
 			}
 			srv.MsgInvalidFunc(r, err)
+			srv.MsgPool.Put(r.Data)
 			continue
 		}
 
@@ -311,7 +315,7 @@ func (srv *Server) serveTCP(wg *sync.WaitGroup, conn net.Conn) {
 // serveDNS serves the message it skip the message handling if the received message has the response bit set.
 func (srv *Server) serveDNS(w *response, r *Msg) {
 	r.msgPool = srv.MsgPool
-	r.Options = MsgOptionUnpackQuestion | MsgOptionUnpackHeader
+	r.Options = MsgOptionUnpackQuestion
 
 	if err := r.Unpack(); err != nil {
 		srv.MsgInvalidFunc(r, err)
@@ -331,7 +335,7 @@ func (srv *Server) serveDNS(w *response, r *Msg) {
 		r.Authoritative = false
 		r.Response = true
 		r.Zero = false
-		r.Answer, r.Ns, r.Extra, r.Pseudo, r.Stateful = nil, nil, nil, nil, nil // make as small as possible
+		r.Reset()
 		r.Pack()
 
 		io.Copy(w, r)

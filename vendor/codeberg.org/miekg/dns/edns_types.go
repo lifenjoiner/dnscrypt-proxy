@@ -260,7 +260,8 @@ func (o *TCPKEEPALIVE) String() string {
 	return s
 }
 
-// EDE option is used to return additional information about the cause of DNS errors.
+// EDE option is used to return additional information about the cause of DNS errors. EDE stands for Extended
+// DNS Errors. See RFC 8914.
 //
 // This record must be put in the pseudo section.
 type EDE struct {
@@ -375,7 +376,7 @@ func (o *ZONEVERSION) String() string {
 	return s
 }
 
-// Extended DNS Error Codes (RFC 8914).
+// Extended DNS Error Codes (RFC 8914). These are used in the [EDE] pseudo RR.
 const (
 	ExtendedErrorOther uint16 = iota
 	ExtendedErrorUnsupportedDNSKEYAlgorithm
@@ -410,7 +411,8 @@ const (
 	ExtendedErrorInvalidQueryType
 )
 
-// ExtendedErrorToString maps extended error info codes to a human readable description.
+// ExtendedErrorToString maps extended error info codes to a human readable description. This is used inside
+// the [EDE] pseudo RR.
 var ExtendedErrorToString = map[uint16]string{
 	ExtendedErrorOther:                       "Other",
 	ExtendedErrorUnsupportedDNSKEYAlgorithm:  "Unsupported DNSKEY Algorithm",
@@ -479,6 +481,10 @@ func unpackOptionCode(option EDNS0, s *cryptobyte.String) error {
 	case *ZONEVERSION:
 		return x.unpack(s)
 	}
+	if x, ok := option.(Packer); ok {
+		msg := []byte(*s)
+		return x.Unpack(msg)
+	}
 	return fmt.Errorf("dns: no option unpack defined")
 }
 
@@ -513,7 +519,9 @@ func packOptionCode(option EDNS0, msg []byte, off int) (int, error) {
 	case *ZONEVERSION:
 		return x.pack(msg, off)
 	}
-	// Coder() check, abuse Type()?
+	if x, ok := option.(Packer); ok {
+		return x.Pack(msg, off)
+	}
 	return 0, fmt.Errorf("dns: no option pack defined")
 }
 
