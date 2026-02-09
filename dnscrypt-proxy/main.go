@@ -115,6 +115,9 @@ func main() {
 		}
 		return
 	}
+	if err := ConfigLoad(app.proxy, app.flags); err != nil {
+		dlog.Fatal(err)
+	}
 	if svc != nil {
 		if err := svc.Run(); err != nil {
 			dlog.Fatal(err)
@@ -135,9 +138,6 @@ func (app *App) Start(service service.Service) error {
 }
 
 func (app *App) AppMain() {
-	if err := ConfigLoad(app.proxy, app.flags); err != nil {
-		dlog.Fatal(err)
-	}
 	if err := PidFileCreate(); err != nil {
 		dlog.Errorf("Unable to create the PID file: [%v]", err)
 	}

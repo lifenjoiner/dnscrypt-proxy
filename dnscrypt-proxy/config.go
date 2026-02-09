@@ -108,6 +108,7 @@ type Config struct {
 	DNS64                    DNS64Config                 `toml:"dns64"`
 	EDNSClientSubnet         []string                    `toml:"edns_client_subnet"`
 	IPEncryption             IPEncryptionConfig          `toml:"ip_encryption"`
+	ThreadGCInterval         int                         `toml:"thread_gc_interval"`
 }
 
 func newConfig() Config {
@@ -173,7 +174,8 @@ func newConfig() Config {
 		AnonymizedDNS: AnonymizedDNSConfig{
 			DirectCertFallback: true,
 		},
-		CloakedPTR: false,
+		CloakedPTR:       false,
+		ThreadGCInterval: 0,
 	}
 }
 
@@ -524,6 +526,9 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 		dlog.Notice("Configuration successfully checked")
 		os.Exit(0)
 	}
+
+	// Set the interval for garbage collection on threads
+	proxy.threadGCInterval = config.ThreadGCInterval
 
 	return nil
 }

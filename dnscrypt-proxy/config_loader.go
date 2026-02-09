@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -503,6 +504,10 @@ func initializeNetworking(proxy *Proxy, flags *ConfigFlags, config *Config) erro
 	netprobeAddress, netprobeTimeout := determineNetprobeAddress(flags, config)
 	if err := NetProbe(proxy, netprobeAddress, netprobeTimeout); err != nil {
 		return err
+	}
+
+	if runtime.GOOS == "windows" && proxy.threadGCInterval > 0 {
+		runtime.LockOSThread()
 	}
 
 	for _, listenAddrStr := range proxy.listenAddresses {
