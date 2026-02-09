@@ -3,8 +3,9 @@
 package dns
 
 import "fmt"
+import "codeberg.org/miekg/dns/internal/dnslex"
 
-func parse(rr RR, c *zlexer, o string) *ParseError {
+func parse(rr RR, c *dnslex.Lexer, o string) error {
 	switch x := rr.(type) {
 	case *NULL:
 		return x.parse(c, o)
@@ -166,7 +167,7 @@ func parse(rr RR, c *zlexer, o string) *ParseError {
 		return x.parse(c, o)
 	case *DELEG:
 		return x.parse(c, o)
-	case *DELEGI:
+	case *DELEGPARAM:
 		return x.parse(c, o)
 	case *DSYNC:
 		return x.parse(c, o)
@@ -187,7 +188,7 @@ func parse(rr RR, c *zlexer, o string) *ParseError {
 	}
 	// if here, we don't have the RR in our pkg, check if it does Parser.
 	if x, ok := rr.(Parser); ok {
-		err := x.Parse(tokens(c), o)
+		err := x.Parse(dnslex.Tokens(c), o)
 		if err != nil {
 			return &ParseError{err: err.Error()}
 		}

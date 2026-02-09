@@ -471,7 +471,7 @@ func (rr *RFC3597) Clone() RR {
 		rr.Hdr,
 		rdata.RFC3597{
 			rr.RRType,
-			rr.Data,
+			rr.RFC3597.Data,
 		},
 	}
 }
@@ -799,8 +799,8 @@ func (rr *RESINFO) Clone() RR {
 func (rr *HTTPS) Clone() RR {
 	return &HTTPS{*rr.SVCB.Clone().(*SVCB)}
 }
-func (rr *DELEGI) Clone() RR {
-	return &DELEGI{*rr.DELEG.Clone().(*DELEG)}
+func (rr *DELEGPARAM) Clone() RR {
+	return &DELEGPARAM{*rr.DELEG.Clone().(*DELEG)}
 }
 func (rr *ANY) Clone() RR {
 	return &ANY{

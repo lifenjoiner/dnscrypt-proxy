@@ -169,7 +169,7 @@ func compare(a, b RR) int {
 		return x.compare(b)
 	case *DELEG:
 		return x.compare(b)
-	case *DELEGI:
+	case *DELEGPARAM:
 		return x.compare(b)
 	case *DSYNC:
 		return x.compare(b)
@@ -1291,7 +1291,7 @@ func (rr *TKEY) compare(b RR) (x int) {
 }
 
 func (rr *RFC3597) compare(b RR) (x int) {
-	x = comparehex(rr.Data, b.(*RFC3597).Data)
+	x = comparehex(rr.RFC3597.Data, b.(*RFC3597).RFC3597.Data)
 	if x != 0 {
 		if x < 0 {
 			return -1
@@ -1936,8 +1936,8 @@ func (rr *HTTPS) compare(b RR) (x int) {
 	return rr.SVCB.compare(&b.(*HTTPS).SVCB)
 }
 
-func (rr *DELEGI) compare(b RR) (x int) {
-	return rr.DELEG.compare(&b.(*DELEGI).DELEG)
+func (rr *DELEGPARAM) compare(b RR) (x int) {
+	return rr.DELEG.compare(&b.(*DELEGPARAM).DELEG)
 }
 
 func (rr *ANY) compare(b RR) (x int) {
