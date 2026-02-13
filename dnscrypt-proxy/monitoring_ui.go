@@ -65,7 +65,7 @@ type MetricsCollector struct {
 
 	// Caching for expensive calculations
 	cacheMutex      sync.RWMutex
-	cachedMetrics   map[string]interface{}
+	cachedMetrics   map[string]any
 	cacheLastUpdate time.Time
 	cacheTTL        time.Duration
 
@@ -170,7 +170,7 @@ func NewMonitoringUI(proxy *Proxy) *MonitoringUI {
 		privacyLevel:       proxy.monitoringUI.PrivacyLevel,
 		// Initialize caching with 1 second TTL
 		cacheTTL:      time.Second,
-		cachedMetrics: make(map[string]interface{}),
+		cachedMetrics: make(map[string]any),
 		// Initialize Prometheus
 		prometheusEnabled: proxy.monitoringUI.PrometheusEnabled,
 		proxy:             proxy,
@@ -697,8 +697,8 @@ func (mc *MetricsCollector) collectResolverSnapshots() ([]resolverSnapshot, map[
 	return snapshots, index
 }
 
-func (mc *MetricsCollector) collectCacheStats(cacheHitRatio float64, cacheHits, cacheMisses uint64) map[string]interface{} {
-	stats := map[string]interface{}{
+func (mc *MetricsCollector) collectCacheStats(cacheHitRatio float64, cacheHits, cacheMisses uint64) map[string]any {
+	stats := map[string]any{
 		"enabled":         false,
 		"configured_size": 0,
 		"entries":         0,
@@ -727,12 +727,12 @@ func (mc *MetricsCollector) collectCacheStats(cacheHitRatio float64, cacheHits, 
 	return stats
 }
 
-func (mc *MetricsCollector) collectSourceRefresh() []map[string]interface{} {
+func (mc *MetricsCollector) collectSourceRefresh() []map[string]any {
 	if mc.proxy == nil || len(mc.proxy.sources) == 0 {
 		return nil
 	}
 
-	results := make([]map[string]interface{}, 0, len(mc.proxy.sources))
+	results := make([]map[string]any, 0, len(mc.proxy.sources))
 	now := time.Now()
 
 	for _, source := range mc.proxy.sources {
@@ -774,7 +774,7 @@ func (mc *MetricsCollector) collectSourceRefresh() []map[string]interface{} {
 			status = "stale"
 		}
 
-		entry := map[string]interface{}{
+		entry := map[string]any{
 			"name":        name,
 			"cache_file":  cacheFile,
 			"age_seconds": ageSeconds,
@@ -808,7 +808,7 @@ func (mc *MetricsCollector) invalidateCache() {
 }
 
 // GetMetrics - Returns the current metrics
-func (mc *MetricsCollector) GetMetrics() map[string]interface{} {
+func (mc *MetricsCollector) GetMetrics() map[string]any {
 	// Check cache first
 	mc.cacheMutex.RLock()
 	if time.Since(mc.cacheLastUpdate) < mc.cacheTTL && mc.cachedMetrics != nil {
@@ -867,7 +867,7 @@ func (mc *MetricsCollector) GetMetrics() map[string]interface{} {
 	}
 
 	// Get top domains (limited to 20) sorted by decreasing count
-	topDomainsList := make([]map[string]interface{}, 0)
+	topDomainsList := make([]map[string]any, 0)
 	if mc.privacyLevel < 2 {
 		// Create a slice of domain-count pairs
 		type domainCount struct {
@@ -893,7 +893,7 @@ func (mc *MetricsCollector) GetMetrics() map[string]interface{} {
 		// Take top 20
 		count := 0
 		for _, dc := range domainCounts {
-			topDomainsList = append(topDomainsList, map[string]interface{}{
+			topDomainsList = append(topDomainsList, map[string]any{
 				"domain": dc.domain,
 				"count":  dc.count,
 			})
@@ -905,7 +905,7 @@ func (mc *MetricsCollector) GetMetrics() map[string]interface{} {
 	}
 
 	// Get query type distribution sorted by decreasing count and limited to 10
-	queryTypesList := make([]map[string]interface{}, 0)
+	queryTypesList := make([]map[string]any, 0)
 
 	// Create a slice of query type-count pairs
 	type queryTypeCount struct {
@@ -931,7 +931,7 @@ func (mc *MetricsCollector) GetMetrics() map[string]interface{} {
 	// Take top 10
 	count := 0
 	for _, qtc := range queryTypeCounts {
-		queryTypesList = append(queryTypesList, map[string]interface{}{
+		queryTypesList = append(queryTypesList, map[string]any{
 			"type":  qtc.qtype,
 			"count": qtc.count,
 		})
@@ -947,9 +947,9 @@ func (mc *MetricsCollector) GetMetrics() map[string]interface{} {
 	copy(recentQueries, mc.recentQueries)
 	mc.queryLogMutex.RUnlock()
 
-	resolverHealth := make([]map[string]interface{}, 0, len(resolverSnapshots))
+	resolverHealth := make([]map[string]any, 0, len(resolverSnapshots))
 	for _, snapshot := range resolverSnapshots {
-		entry := map[string]interface{}{
+		entry := map[string]any{
 			"name":           snapshot.name,
 			"proto":          snapshot.proto,
 			"status":         snapshot.status,
@@ -977,7 +977,7 @@ func (mc *MetricsCollector) GetMetrics() map[string]interface{} {
 	generatedAt := time.Now().UTC()
 
 	// Return all metrics and cache the result
-	metrics := map[string]interface{}{
+	metrics := map[string]any{
 		"total_queries":      totalQueries,
 		"queries_per_second": queriesPerSecond,
 		"uptime_seconds":     time.Since(startTime).Seconds(),
@@ -1177,7 +1177,7 @@ func (ui *MonitoringUI) handleWebSocket(w http.ResponseWriter, r *http.Request) 
 
 		for {
 			// Read message from client
-			var msg map[string]interface{}
+			var msg map[string]any
 			err := conn.ReadJSON(&msg)
 			if err != nil {
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
