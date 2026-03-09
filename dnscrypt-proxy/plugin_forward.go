@@ -25,6 +25,7 @@ const (
 	Bootstrap
 	DHCP
 	Resolvconf
+	ServerName
 )
 
 type SearchSequenceItem struct {
@@ -171,8 +172,12 @@ func (plugin *PluginForward) parseForwardFile(lines string) (bool, []PluginForwa
 					dlog.Infof("Forwarding [%s] to the servers specified in '%s'", domain, file)
 					continue
 				}
-				if strings.HasPrefix(server, "$.") {
-					// sdns server name
+				const serverNamePrefix = "$."
+				if strings.HasPrefix(server, serverNamePrefix) {
+					sequence = append(sequence, SearchSequenceItem{
+						typ:     ServerName,
+						servers: []string{server},
+					})
 					continue
 				}
 				if strings.HasPrefix(server, "$") {
@@ -366,13 +371,14 @@ func (plugin *PluginForward) Eval(pluginsState *PluginsState, msg *dns.Msg) erro
 				)
 				continue
 			}
+		case ServerName:
+			// break tries, go back to the main process
+			pluginsState.serverName = sequence[i].servers[0]
+			return nil
 		}
 		pluginsState.serverName = server
 		if len(server) == 0 {
 			continue
-		}
-		if strings.HasPrefix(server, "$.") {
-			return nil
 		}
 
 		if tries == 0 {
