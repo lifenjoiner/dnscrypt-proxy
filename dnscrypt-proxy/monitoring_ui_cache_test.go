@@ -55,7 +55,7 @@ func TestCacheStatisticsAccuracy(t *testing.T) {
 			returnCode:   PluginsReturnCodePass,
 		}
 
-		ui.UpdateMetrics(pluginsState, msg)
+		ui.UpdateMetrics(&pluginsState)
 
 		if mc.cacheHits != 1 {
 			t.Errorf("After cache hit, cacheHits should be 1, got %d", mc.cacheHits)
@@ -84,7 +84,7 @@ func TestCacheStatisticsAccuracy(t *testing.T) {
 			returnCode:   PluginsReturnCodePass,
 		}
 
-		ui.UpdateMetrics(pluginsState, msg)
+		ui.UpdateMetrics(&pluginsState)
 
 		if mc.cacheHits != 1 {
 			t.Errorf("After cache miss, cacheHits should still be 1, got %d", mc.cacheHits)
@@ -113,7 +113,7 @@ func TestCacheStatisticsAccuracy(t *testing.T) {
 			returnCode:   PluginsReturnCodeReject, // Blocked query
 		}
 
-		ui.UpdateMetrics(pluginsState, msg)
+		ui.UpdateMetrics(&pluginsState)
 
 		// Cache stats should NOT change for blocked queries
 		if mc.cacheHits != 1 {
@@ -146,7 +146,7 @@ func TestCacheStatisticsAccuracy(t *testing.T) {
 			returnCode:   PluginsReturnCodeDrop, // Dropped query
 		}
 
-		ui.UpdateMetrics(pluginsState, msg)
+		ui.UpdateMetrics(&pluginsState)
 
 		// Cache stats should NOT change for dropped queries
 		if mc.cacheHits != 1 {
