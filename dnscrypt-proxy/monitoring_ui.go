@@ -1073,8 +1073,9 @@ func (ui *MonitoringUI) handleRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Serve the main dashboard page - cache for 5 minutes since template is static
-	setStaticCacheHeaders(w, 300)
+	// No cache, no heartbeat fetching. You will need to log in again after restarting your browser.
+	setDynamicCacheHeaders(w)
+
 	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(MainHTMLTemplate))
 }
