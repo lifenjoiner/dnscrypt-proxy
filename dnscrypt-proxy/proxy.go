@@ -312,7 +312,7 @@ func (proxy *Proxy) StartProxy() {
 			}
 		}()
 	}
-	proxy.xTransport.internalResolverReady = false
+	proxy.xTransport.internalResolverReady.Store(false)
 	proxy.xTransport.internalResolvers = proxy.listenAddresses
 	var liveServers int
 	var err error
@@ -852,6 +852,8 @@ func (proxy *Proxy) processIncomingQuery(
 	pluginsState := NewPluginsState(proxy, clientProto, clientAddr, serverProto, start)
 
 	var serverInfo *ServerInfo
+	var serverName string = "-"
+
 	// Apply query plugins and get server info
 	query, err := pluginsState.ApplyQueryPlugins(&proxy.pluginsGlobals, query, func() (*ServerInfo, bool) {
 		if len(pluginsState.serverName) > 2 && pluginsState.serverName[:2] == "$." {
@@ -865,6 +867,7 @@ func (proxy *Proxy) processIncomingQuery(
 		}
 		needsEDNS0Padding := false
 		if serverInfo != nil {
+			serverName = serverInfo.Name
 			needsEDNS0Padding = (serverInfo.Proto == stamps.StampProtoTypeDoH ||
 				serverInfo.Proto == stamps.StampProtoTypeTLS)
 		}
@@ -905,33 +908,40 @@ func (proxy *Proxy) processIncomingQuery(
 	}
 
 	// Process query with a DNS server if there's no cached response
-	if len(response) == 0 && serverInfo != nil {
-		serverName := serverInfo.Name
-		pluginsState.serverName = serverName
-		if serverInfo.Relay != nil {
-			pluginsState.relayName = serverInfo.Relay.Name
+	// Note: if serverInfo is still nil here, we need to get it
+	if len(response) == 0 {
+		if serverInfo == nil {
+			serverInfo = proxy.serversInfo.getOne()
+			if serverInfo != nil {
+				serverName = serverInfo.Name
+			}
 		}
+		if serverInfo != nil {
+			pluginsState.serverName = serverName
+			if serverInfo.Relay != nil {
+				pluginsState.relayName = serverInfo.Relay.Name
+			}
 
-		// Exchange DNS request with the server
-		exchangeResponse, err := handleDNSExchange(proxy, serverInfo, &pluginsState, query, serverProto)
+			exchangeResponse, err := handleDNSExchange(proxy, serverInfo, &pluginsState, query, serverProto)
 
-		// Update server statistics for WP2 strategy
-		success := (err == nil && exchangeResponse != nil)
-		proxy.serversInfo.updateServerStats(serverName, success)
+			// Update server statistics for WP2 strategy
+			success := (err == nil && exchangeResponse != nil)
+			proxy.serversInfo.updateServerStats(serverName, success)
 
-		if err != nil || exchangeResponse == nil {
-			return response
+			if err != nil || exchangeResponse == nil {
+				return response
+			}
+
+			response = exchangeResponse
+
+			// Process the response through plugins
+			processedResponse, err := processPlugins(proxy, &pluginsState, query, serverInfo, response)
+			if err != nil {
+				return nil
+			}
+
+			response = processedResponse
 		}
-
-		response = exchangeResponse
-
-		// Process the response through plugins
-		processedResponse, err := processPlugins(proxy, &pluginsState, query, serverInfo, response)
-		if err != nil {
-			return response
-		}
-
-		response = processedResponse
 	}
 
 	// Validate the response before sending

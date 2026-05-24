@@ -340,10 +340,10 @@ func (pluginsState *PluginsState) ApplyResponsePlugins(
 ) ([]byte, error) {
 	msg := dns.Msg{Data: packet}
 	if err := msg.Unpack(); err != nil {
-		if len(packet) >= MinDNSPacketSize && HasTCFlag(packet) {
-			err = nil
-		}
 		return packet, err
+	}
+	if len(msg.Question) != 1 {
+		return packet, errors.New("Unexpected number of questions in response")
 	}
 	switch Rcode(packet) {
 	case dns.RcodeSuccess:

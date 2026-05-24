@@ -162,20 +162,25 @@ type Relay struct {
 
 type ServersInfo struct {
 	sync.RWMutex
-	inner             []*ServerInfo
-	registeredServers []RegisteredServer
-	registeredRelays  []RegisteredServer
-	lbStrategy        LBStrategy
-	lbEstimator       bool
-	serversChanged    bool
+	inner               []*ServerInfo
+	registeredServers   []RegisteredServer
+	registeredRelays    []RegisteredServer
+	lbStrategy          LBStrategy
+	lbEstimator         bool
+	serversChanged      bool
+	odohRefreshMu       sync.Mutex
+	odohRefreshInFlight map[string]bool
+	odohLastFailureAt   map[string]time.Time
 }
 
 func NewServersInfo() ServersInfo {
 	return ServersInfo{
-		lbStrategy:        DefaultLBStrategy,
-		lbEstimator:       true,
-		registeredServers: make([]RegisteredServer, 0),
-		registeredRelays:  make([]RegisteredServer, 0),
+		lbStrategy:          DefaultLBStrategy,
+		lbEstimator:         true,
+		registeredServers:   make([]RegisteredServer, 0),
+		registeredRelays:    make([]RegisteredServer, 0),
+		odohRefreshInFlight: make(map[string]bool),
+		odohLastFailureAt:   make(map[string]time.Time),
 	}
 }
 
@@ -185,6 +190,63 @@ func (serversInfo *ServersInfo) registerServers(registeredServers []RegisteredSe
 	serversInfo.Lock()
 	serversInfo.registeredServers = rs
 	serversInfo.Unlock()
+}
+
+// beginODoHRefresh returns true if the caller should perform an ODoH key
+// refresh for the named server. It returns false when another refresh is
+// already in flight or when the previous attempt failed within the
+// failureCooldown window. Successful claims must be paired with a call to
+// endODoHRefresh, ideally via defer so a panic in the refresh path does
+// not leak the in-flight slot.
+func (serversInfo *ServersInfo) beginODoHRefresh(name string, failureCooldown time.Duration) bool {
+	now := time.Now()
+	serversInfo.odohRefreshMu.Lock()
+	defer serversInfo.odohRefreshMu.Unlock()
+	if serversInfo.odohRefreshInFlight == nil {
+		serversInfo.odohRefreshInFlight = make(map[string]bool)
+	}
+	if serversInfo.odohLastFailureAt == nil {
+		serversInfo.odohLastFailureAt = make(map[string]time.Time)
+	}
+	if serversInfo.odohRefreshInFlight[name] {
+		return false
+	}
+	if last, ok := serversInfo.odohLastFailureAt[name]; ok && now.Sub(last) < failureCooldown {
+		return false
+	}
+	serversInfo.odohRefreshInFlight[name] = true
+	return true
+}
+
+// endODoHRefresh releases the in-flight slot claimed by beginODoHRefresh and
+// records whether the refresh succeeded. On success the failure timestamp is
+// cleared so the next 401 can trigger a fresh refresh immediately if needed.
+// On failure the timestamp is stamped to throttle a hostile-relay retry
+// loop. Callers that claim a slot but then discover they have no refresh to
+// perform (e.g. the server is no longer registered) should use
+// cancelODoHRefresh instead so the cooldown state is not mutated.
+func (serversInfo *ServersInfo) endODoHRefresh(name string, success bool) {
+	serversInfo.odohRefreshMu.Lock()
+	defer serversInfo.odohRefreshMu.Unlock()
+	delete(serversInfo.odohRefreshInFlight, name)
+	if success {
+		delete(serversInfo.odohLastFailureAt, name)
+	} else {
+		if serversInfo.odohLastFailureAt == nil {
+			serversInfo.odohLastFailureAt = make(map[string]time.Time)
+		}
+		serversInfo.odohLastFailureAt[name] = time.Now()
+	}
+}
+
+// cancelODoHRefresh releases the in-flight slot without touching the failure
+// cooldown. It is used when beginODoHRefresh was claimed but no refresh
+// actually ran, so neither stamping a failure nor clearing a prior one is
+// appropriate.
+func (serversInfo *ServersInfo) cancelODoHRefresh(name string) {
+	serversInfo.odohRefreshMu.Lock()
+	defer serversInfo.odohRefreshMu.Unlock()
+	delete(serversInfo.odohRefreshInFlight, name)
 }
 
 func (serversInfo *ServersInfo) registerServer(name string, stamp stamps.ServerStamp) {
@@ -234,7 +296,7 @@ func (serversInfo *ServersInfo) serversChangedGet() bool {
 	return value
 }
 
-func (serversInfo *ServersInfo) initServerInfo(proxy *Proxy, name string, stamp stamps.ServerStamp) (*ServerInfo, bool, error) {
+func (serversInfo *ServersInfo) initServerInfo(proxy *Proxy, name string, stamp stamps.ServerStamp) (*ServerInfo, error) {
 	serversInfo.RLock()
 	isNew := true
 	for _, oldServer := range serversInfo.inner {
@@ -246,34 +308,35 @@ func (serversInfo *ServersInfo) initServerInfo(proxy *Proxy, name string, stamp 
 	serversInfo.RUnlock()
 	newServer, err := fetchServerInfo(proxy, name, stamp, isNew)
 	if err != nil {
-		return nil, isNew, err
+		return nil, err
 	}
 	if name != newServer.Name {
 		dlog.Fatalf("[%s] != [%s]", name, newServer.Name)
 	}
 	newServer.rtt = ewma.NewMovingAverage(RTTEwmaDecay)
 	newServer.rtt.Set(float64(newServer.initialRtt))
-	return &newServer, isNew, err
+	return &newServer, err
 }
 
 func (serversInfo *ServersInfo) refreshServer(proxy *Proxy, name string, stamp stamps.ServerStamp) error {
-	newServer, isNew, err := serversInfo.initServerInfo(proxy, name, stamp)
+	newServer, err := serversInfo.initServerInfo(proxy, name, stamp)
 	if err != nil {
 		return err
 	}
 	serversInfo.Lock()
+	found := false
 	for i, oldServer := range serversInfo.inner {
 		if oldServer.Name == name {
 			serversInfo.inner[i] = newServer
-			isNew = false
+			found = true
 			break
 		}
 	}
-	serversInfo.Unlock()
-	if isNew {
-		serversInfo.Lock()
+	if !found {
 		serversInfo.inner = append(serversInfo.inner, newServer)
-		serversInfo.Unlock()
+	}
+	serversInfo.Unlock()
+	if !found {
 		proxy.serversInfo.registerServer(name, stamp)
 	}
 
@@ -304,12 +367,12 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 			var serverInfo *ServerInfo
 			var err error
 			if rebuildInner {
-				serverInfo, _, err = serversInfo.initServerInfo(proxy, registeredServer.name, registeredServer.stamp)
+				serverInfo, err = serversInfo.initServerInfo(proxy, registeredServer.name, registeredServer.stamp)
 				serverInfoChannel <- serverInfo
 			} else {
 				err = serversInfo.refreshServer(proxy, registeredServer.name, registeredServer.stamp)
 				if err == nil {
-					proxy.xTransport.internalResolverReady = true
+					proxy.xTransport.internalResolverReady.Store(true)
 				}
 			}
 			errorChannel <- err
