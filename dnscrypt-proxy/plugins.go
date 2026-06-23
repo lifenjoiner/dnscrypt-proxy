@@ -342,8 +342,8 @@ func (pluginsState *PluginsState) ApplyResponsePlugins(
 	if err := msg.Unpack(); err != nil {
 		return packet, err
 	}
-	if len(msg.Question) != 1 {
-		return packet, errors.New("Unexpected number of questions in response")
+	if err := validateResponseForQuery(pluginsState.questionMsg, &msg); err != nil {
+		return packet, err
 	}
 	switch Rcode(packet) {
 	case dns.RcodeSuccess:
@@ -380,6 +380,9 @@ func (pluginsState *PluginsState) ApplyResponsePlugins(
 			}
 		}
 		pluginsGlobals.RUnlock()
+	}
+	if err := validateResponseForQuery(pluginsState.questionMsg, &msg); err != nil {
+		return packet, err
 	}
 	if err := msg.Pack(); err != nil {
 		return packet, err

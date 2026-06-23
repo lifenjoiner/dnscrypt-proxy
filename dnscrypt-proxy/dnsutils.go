@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"strings"
@@ -13,6 +14,43 @@ import (
 	"codeberg.org/miekg/dns/rdata"
 	"github.com/jedisct1/dlog"
 )
+
+func validateResponseQuestion(query, response *dns.Msg) error {
+	if query == nil || response == nil || len(query.Question) != 1 || len(response.Question) != 1 {
+		return errors.New("Unexpected number of questions")
+	}
+	qQuestion := query.Question[0]
+	rQuestion := response.Question[0]
+	qHeader := qQuestion.Header()
+	rHeader := rQuestion.Header()
+	qType := dns.RRToType(qQuestion)
+	rType := dns.RRToType(rQuestion)
+	if qType != rType || qHeader.Class != rHeader.Class || !dns.EqualName(qHeader.Name, rHeader.Name) {
+		return fmt.Errorf(
+			"Response question does not match query: %s/%d/%d != %s/%d/%d",
+			rHeader.Name,
+			rType,
+			rHeader.Class,
+			qHeader.Name,
+			qType,
+			qHeader.Class,
+		)
+	}
+	return nil
+}
+
+func validateResponseForQuery(query, response *dns.Msg) error {
+	if query == nil || response == nil {
+		return errors.New("Missing query or response")
+	}
+	if !response.Response {
+		return errors.New("response bit is not set")
+	}
+	if response.ID != query.ID {
+		return fmt.Errorf("response ID mismatch: %d != %d", response.ID, query.ID)
+	}
+	return validateResponseQuestion(query, response)
+}
 
 func EmptyResponseFromMessage(srcMsg *dns.Msg) *dns.Msg {
 	dstMsg := &dns.Msg{}
@@ -310,6 +348,20 @@ type DNSExchangeResponse struct {
 	err              error
 }
 
+// A resolver and an Anonymized DNSCrypt relay both refuse to return a UDP
+// response larger than the request that triggered it, so a post-quantum
+// certificate only comes back over UDP when the certificate probe is padded past
+// the response. A PQ certificate is ~1.3 KB, ~1.5 KB once paired with the classical
+// certificate; during a key rotation the set doubles to two classical plus two PQ
+// certificates, roughly 3 KB. The large probe is padded past that rollover size so
+// PQ discovery keeps working through relays even mid-rotation. The fragments-blocked
+// probe stays small on purpose, so a PQ resolver truncates it and we still learn of
+// PQ support through the TC bit and fall back to TCP.
+const (
+	certProbePaddedLen           = 3200
+	certProbeFragmentsBlockedLen = 480
+)
+
 func DNSExchange(
 	proxy *Proxy,
 	proto string,
@@ -336,7 +388,7 @@ func DNSExchange(
 					select {
 					case <-cancelChannel:
 					default:
-						option = _dnsExchange(proxy, proto, query, serverAddress, relay, 1500)
+						option = _dnsExchange(proxy, proto, query, serverAddress, relay, certProbePaddedLen)
 					}
 					option.fragmentsBlocked = false
 					option.priority = 0
@@ -352,7 +404,7 @@ func DNSExchange(
 				select {
 				case <-cancelChannel:
 				default:
-					option = _dnsExchange(proxy, proto, query, serverAddress, relay, 480)
+					option = _dnsExchange(proxy, proto, query, serverAddress, relay, certProbeFragmentsBlockedLen)
 				}
 				option.fragmentsBlocked = true
 				option.priority = 1
@@ -498,6 +550,9 @@ func _dnsExchange(
 	}
 	msg := dns.Msg{Data: packet}
 	if err := msg.Unpack(); err != nil {
+		return DNSExchangeResponse{err: err}
+	}
+	if err := validateResponseForQuery(query, &msg); err != nil {
 		return DNSExchangeResponse{err: err}
 	}
 	return DNSExchangeResponse{response: &msg, rtt: rtt, err: nil}

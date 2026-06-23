@@ -60,6 +60,9 @@ type ServerInfo struct {
 	ServerPk           [32]byte
 	SharedKey          [32]byte
 	MagicQuery         [8]byte
+	PqPublicKey        []byte
+	PqCertContext      []byte
+	pqResumption       *pqResumptionState
 	knownBugs          ServerBugs
 	Proto              stamps.StampProtoType
 	useGet             bool
@@ -323,6 +326,8 @@ func (serversInfo *ServersInfo) refreshServer(proxy *Proxy, name string, stamp s
 	if err != nil {
 		return err
 	}
+	proxy.cryptoKeyMu.RLock()
+	proxy.recomputeServerSharedKeyLocked(newServer)
 	serversInfo.Lock()
 	found := false
 	for i, oldServer := range serversInfo.inner {
@@ -336,6 +341,7 @@ func (serversInfo *ServersInfo) refreshServer(proxy *Proxy, name string, stamp s
 		serversInfo.inner = append(serversInfo.inner, newServer)
 	}
 	serversInfo.Unlock()
+	proxy.cryptoKeyMu.RUnlock()
 	if !found {
 		proxy.serversInfo.registerServer(name, stamp)
 	}
@@ -939,6 +945,9 @@ func fetchDNSCryptServerInfo(proxy *Proxy, name string, stamp stamps.ServerStamp
 	if err != nil {
 		return ServerInfo{}, err
 	}
+	if certInfo.CryptoConstruction == XWingPQ {
+		dlog.Noticef("[%v] using the post-quantum X-Wing key exchange", name)
+	}
 	remoteUDPAddr, err := net.ResolveUDPAddr("udp", stamp.ServerAddrStr)
 	if err != nil {
 		return ServerInfo{}, err
@@ -959,30 +968,24 @@ func fetchDNSCryptServerInfo(proxy *Proxy, name string, stamp stamps.ServerStamp
 			&name,
 			false,
 		)
-		if err == nil && len(msg.Question) > 0 {
-			question := msg.Question[0]
-			if dns.RRToType(question) == dns.RRToType(query.Question[0]) && strings.EqualFold(question.Header().Name, query.Question[0].Header().Name) {
-				dlog.Debugf("[%s] also serves plaintext DNS", name)
-				if msg.ID != 0xcafe {
-					dlog.Infof("[%s] handling of DNS message identifiers is broken", name)
+		if err == nil {
+			dlog.Debugf("[%s] also serves plaintext DNS", name)
+			for _, rr := range msg.Answer {
+				rrType := dns.RRToType(rr)
+				if rrType == dns.TypeA || rrType == dns.TypeAAAA {
+					dlog.Warnf("[%s] may be a lying resolver -- skipping", name)
+					return ServerInfo{}, fmt.Errorf("[%s] unexpected record: [%s]", name, rr.String())
 				}
-				for _, rr := range msg.Answer {
-					rrType := dns.RRToType(rr)
-					if rrType == dns.TypeA || rrType == dns.TypeAAAA {
-						dlog.Warnf("[%s] may be a lying resolver -- skipping", name)
-						return ServerInfo{}, fmt.Errorf("[%s] unexpected record: [%s]", name, rr.String())
+			}
+			for _, rr := range msg.Extra {
+				if dns.RRToType(rr) == dns.TypeTXT {
+					dlog.Warnf("[%s] may be a dummy resolver -- skipping", name)
+					txts := rr.(*dns.TXT).Txt
+					cause := ""
+					if len(txts) > 0 {
+						cause = txts[0]
 					}
-				}
-				for _, rr := range msg.Extra {
-					if dns.RRToType(rr) == dns.TypeTXT {
-						dlog.Warnf("[%s] may be a dummy resolver -- skipping", name)
-						txts := rr.(*dns.TXT).Txt
-						cause := ""
-						if len(txts) > 0 {
-							cause = txts[0]
-						}
-						return ServerInfo{}, fmt.Errorf("[%s] unexpected record: [%s]", name, cause)
-					}
+					return ServerInfo{}, fmt.Errorf("[%s] unexpected record: [%s]", name, cause)
 				}
 			}
 		}
@@ -994,6 +997,9 @@ func fetchDNSCryptServerInfo(proxy *Proxy, name string, stamp stamps.ServerStamp
 		ServerPk:           certInfo.ServerPk,
 		SharedKey:          certInfo.SharedKey,
 		CryptoConstruction: certInfo.CryptoConstruction,
+		PqPublicKey:        certInfo.PqPublicKey,
+		PqCertContext:      certInfo.PqCertContext,
+		pqResumption:       newPqResumptionState(certInfo.CryptoConstruction),
 		Name:               name,
 		Timeout:            proxy.timeout,
 		UDPAddr:            remoteUDPAddr,
@@ -1004,7 +1010,7 @@ func fetchDNSCryptServerInfo(proxy *Proxy, name string, stamp stamps.ServerStamp
 	}, nil
 }
 
-func dohTestPacket(msgID uint16) []byte {
+func dohTestPacket(msgID uint16) *dns.Msg {
 	msg := dns.NewMsg(".", dns.TypeNS)
 	msg.ID = msgID
 	msg.RecursionDesired = true
@@ -1017,10 +1023,10 @@ func dohTestPacket(msgID uint16) []byte {
 	if err := msg.Pack(); err != nil {
 		dlog.Fatal(err)
 	}
-	return msg.Data
+	return msg
 }
 
-func dohNXTestPacket(msgID uint16) []byte {
+func dohNXTestPacket(msgID uint16) *dns.Msg {
 	qName := make([]byte, 16)
 	charset := "abcdefghijklmnopqrstuvwxyz"
 	for i := range qName {
@@ -1038,7 +1044,7 @@ func dohNXTestPacket(msgID uint16) []byte {
 	if err := msg.Pack(); err != nil {
 		dlog.Fatal(err)
 	}
-	return msg.Data
+	return msg
 }
 
 func plainNXTestPacket(msgID uint16) *dns.Msg {
@@ -1070,7 +1076,7 @@ func fetchDoHServerInfo(proxy *Proxy, name string, stamp stamps.ServerStamp, isN
 		Host:   stamp.ProviderName,
 		Path:   stamp.Path,
 	}
-	body := dohTestPacket(0xcafe)
+	body := dohTestPacket(0xcafe).Data
 	useGet := false
 	if _, _, _, _, err := proxy.xTransport.DoHQuery(useGet, url, body, proxy.timeout); err != nil {
 		useGet = true
@@ -1079,8 +1085,8 @@ func fetchDoHServerInfo(proxy *Proxy, name string, stamp stamps.ServerStamp, isN
 		}
 		dlog.Debugf("Server [%s] doesn't appear to support POST; falling back to GET requests", name)
 	}
-	body = dohNXTestPacket(0xcafe)
-	serverResponse, _, tls, rtt, err := proxy.xTransport.DoHQuery(useGet, url, body, proxy.timeout)
+	queryMsg := dohNXTestPacket(0xcafe)
+	serverResponse, _, tls, rtt, err := proxy.xTransport.DoHQuery(useGet, url, queryMsg.Data, proxy.timeout)
 	if err != nil {
 		dlog.Infof("[%s] [%s]: %v", name, url, err)
 		return ServerInfo{}, err
@@ -1091,6 +1097,9 @@ func fetchDoHServerInfo(proxy *Proxy, name string, stamp stamps.ServerStamp, isN
 	msg := dns.Msg{Data: serverResponse}
 	if err := msg.Unpack(); err != nil {
 		dlog.Warnf("[%s]: %v", name, err)
+		return ServerInfo{}, err
+	}
+	if err := validateResponseForQuery(queryMsg, &msg); err != nil {
 		return ServerInfo{}, err
 	}
 	if msg.Rcode != dns.RcodeNameError {
@@ -1211,8 +1220,7 @@ func _fetchODoHTargetInfo(proxy *Proxy, name string, stamp stamps.ServerStamp, i
 	for _, odohTargetConfig := range odohTargetConfigs {
 		url := relay.ODoH.URL
 
-		query := dohTestPacket(0xcafe)
-		odohQuery, err := odohTargetConfig.encryptQuery(query)
+		odohQuery, err := odohTargetConfig.encryptQuery(dohTestPacket(0xcafe).Data)
 		if err != nil {
 			continue
 		}
@@ -1226,8 +1234,8 @@ func _fetchODoHTargetInfo(proxy *Proxy, name string, stamp stamps.ServerStamp, i
 			dlog.Debugf("Server [%s] doesn't appear to support POST; falling back to GET requests", name)
 		}
 
-		query = dohNXTestPacket(0xcafe)
-		odohQuery, err = odohTargetConfig.encryptQuery(query)
+		queryMsg := dohNXTestPacket(0xcafe)
+		odohQuery, err = odohTargetConfig.encryptQuery(queryMsg.Data)
 		if err != nil {
 			continue
 		}
@@ -1254,6 +1262,9 @@ func _fetchODoHTargetInfo(proxy *Proxy, name string, stamp stamps.ServerStamp, i
 		msg := dns.Msg{Data: serverResponse}
 		if err := msg.Unpack(); err != nil {
 			dlog.Warnf("[%s]: %v", name, err)
+			return ServerInfo{}, err
+		}
+		if err := validateResponseForQuery(queryMsg, &msg); err != nil {
 			return ServerInfo{}, err
 		}
 		if msg.Rcode != dns.RcodeNameError {
