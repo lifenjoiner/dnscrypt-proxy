@@ -166,7 +166,6 @@ func (source *Source) fetchNew(xTransport *XTransport) (time.Duration, error) {
 	if len(source.urls) == 0 {
 		return ttl, err
 	}
-
 	var bin, sig []byte
 	for _, srcURL := range source.urls {
 		dlog.Infof("Source [%s] loading from URL [%s]", source.name, srcURL)
@@ -191,7 +190,9 @@ func (source *Source) fetchNew(xTransport *XTransport) (time.Duration, error) {
 		source.updateCache(bin, sig)
 		ttl = source.cacheTTL
 	}
+	source.Lock()
 	source.refresh = now.Add(ttl)
+	source.Unlock()
 	return ttl, err
 }
 
@@ -237,7 +238,9 @@ func NewSource(
 	if err == nil {
 		dlog.Noticef("Source [%s] cache file [%s] loaded", source.name, source.cacheFile)
 		if len(source.urls) > 0 {
+			source.Lock()
 			source.refresh = now.Add(delay)
+			source.Unlock()
 		}
 	} else {
 		dlog.Debugf("Source [%s] cache file [%s] not present or invalid", source.name, source.cacheFile)
@@ -245,7 +248,9 @@ func NewSource(
 			delay, err = source.fetchNew(xTransport)
 			if err == nil {
 				dlog.Noticef("Source [%s] fresh file [%s] loaded", source.name, source.cacheFile)
+				source.Lock()
 				source.refresh = now.Add(delay)
+				source.Unlock()
 			}
 		} else {
 			dlog.Errorf("Source [%s] has no valid URL", source.name)
@@ -261,10 +266,13 @@ func PrefetchSources(xTransport *XTransport, sources []*Source) time.Duration {
 	for _, source := range sources {
 		var delay time.Duration
 		var err error
-		if source.refresh.IsZero() {
+		source.RLock()
+		refresh := source.refresh
+		source.RUnlock()
+		if refresh.IsZero() {
 			continue
-		} else if source.refresh.After(now) {
-			delay = source.refresh.Sub(now)
+		} else if refresh.After(now) {
+			delay = refresh.Sub(now)
 		} else {
 			dlog.Debugf("Prefetching [%s]", source.name)
 			if delay, err = source.fetchNew(xTransport); err != nil {

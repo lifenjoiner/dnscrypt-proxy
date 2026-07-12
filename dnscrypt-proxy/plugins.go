@@ -83,7 +83,6 @@ type PluginsState struct {
 	timeout                          time.Duration
 	returnCode                       PluginsReturnCode
 	maxPayloadSize                   int
-	cacheSize                        int
 	originalMaxPayloadSize           int
 	maxUnencryptedUDPSafePayloadSize int
 	rejectTTL                        uint32
@@ -254,7 +253,6 @@ func NewPluginsState(
 		maxPayloadSize:                   MaxDNSUDPPacketSize - ResponseOverhead,
 		clientProto:                      clientProto,
 		clientAddr:                       clientAddr,
-		cacheSize:                        proxy.cacheSize,
 		cacheNegMinTTL:                   proxy.cacheNegMinTTL,
 		cacheNegMaxTTL:                   proxy.cacheNegMaxTTL,
 		cacheMinTTL:                      proxy.cacheMinTTL,
