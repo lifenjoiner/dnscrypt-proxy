@@ -217,8 +217,9 @@ keepalive = 30
 ## When wake up from hibernation, NIC is not ready, and/or a burst of requests,
 ## these may cause threads grow to hundreds.
 ## It should not be too frequent. Default is 0, meaning disabled.
+## There is still a chance that the UDP listenings will be terminated.
 
-# thread_gc_interval = 11
+# thread_gc_interval = 61
 
 
 ###############################################################################
