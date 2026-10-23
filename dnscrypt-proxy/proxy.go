@@ -415,6 +415,16 @@ func (proxy *Proxy) updateRegisteredServers() error {
 	if len(registeredServersNew) > 0 || (len(registeredRelaysNew) > 0 && proxy.routes != nil && len(*proxy.routes) > 0) {
 		proxy.serversInfo.serversChangedSet(true)
 	}
+	if proxy.xTransport.certHashes.Load() != nil {
+		certHashes := make(map[string][][]byte)
+		for _, registeredServer := range proxy.registeredServers {
+			if stamp := registeredServer.stamp; stamp.Proto == stamps.StampProtoTypeDoH {
+				key := certHashesHostKey(stamp.ProviderName)
+				certHashes[key] = append(certHashes[key], stamp.Hashes...)
+			}
+		}
+		proxy.xTransport.certHashes.Store(&certHashes)
+	}
 	return nil
 }
 
